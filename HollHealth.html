@@ -75,7 +75,7 @@
     step('Loading Babel (JSX compiler) from CDN…');
   </script>
 
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"
     onload="updateStep(document.getElementById('diag-steps').lastChild, 'Babel loaded ✓', true)"
     onerror="updateStep(document.getElementById('diag-steps').lastChild, 'Babel FAILED to load — CDN blocked', false)">
   </script>
@@ -105,11 +105,18 @@
   <script>
     // Wrap Babel compilation in try/catch to catch JSX parse errors
     window.addEventListener('load', function() {
+      if (typeof Babel === 'undefined') return; // CDN blocked — diagnostic already shown
       try {
         const scripts = document.querySelectorAll('script[type="text/babel-pending"]');
         scripts.forEach(s => {
           try {
-            const code = Babel.transform(s.textContent, {presets:['react']}).code;
+            // runtime:'classic' forces React.createElement() — prevents Babel from
+            // generating "import { jsx } from react/jsx-runtime" which breaks new Function()
+            // sourceType:'script' prevents Babel treating the code as an ES module
+            const code = Babel.transform(s.textContent, {
+              presets: [['react', { runtime: 'classic' }]],
+              sourceType: 'script'
+            }).code;
             const fn = new Function(code);
             fn();
           } catch(e) {
@@ -161,7 +168,7 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.19';
+const APP_VERSION = '1.5.21';
 
 const PROJECTED = new Set([10,11,12]);
 
