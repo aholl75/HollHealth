@@ -179,7 +179,7 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.24';
+const APP_VERSION = '1.5.25';
 
 const PROJECTED = new Set([10,11,12]);
 
@@ -976,8 +976,9 @@ function HollNutrition() {
       ...currentRecipes,
     ];
     allSources.forEach(r => {
-      if (!r || !r.name) return;
-      if (!r.ingredients && !r.steps) return;
+      try {
+        if (!r || typeof r !== 'object' || !r.name) return;
+        if (!r.ingredients && !r.steps) return;
       const key = normName(r.name);
       if (base[key]) {
         base[key] = {...base[key], _imported: true, _data: r};
@@ -1004,6 +1005,7 @@ function HollNutrition() {
           _data: r,
         };
       }
+      } catch(recErr) { console.warn('Recipe library entry error:', recErr); }
     });
     return Object.values(base);
   }, [recipeLibrary, currentRecipes, plans]);
@@ -3590,7 +3592,35 @@ function HollNutrition() {
 
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(HollNutrition));
+
+    // Error boundary so any React render crash shows a real message
+    // instead of the opaque cross-origin "Script error." from window.onerror
+    class ErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { err: null }; }
+      static getDerivedStateFromError(err) { return { err }; }
+      componentDidCatch(err, info) { console.error('React render error:', err, info); }
+      render() {
+        if (this.state.err) {
+          const msg = this.state.err?.message || String(this.state.err);
+          const stk = this.state.err?.stack || '';
+          return React.createElement('div', {style:{padding:32,fontFamily:'monospace',color:'#dc2626'}},
+            React.createElement('div', {style:{fontSize:18,fontWeight:700,marginBottom:12}}, '⚠ App render error'),
+            React.createElement('div', {style:{fontSize:14,marginBottom:8,padding:'10px 14px',background:'#fef2f2',borderRadius:8,wordBreak:'break-word'}}, msg),
+            stk && React.createElement('pre', {style:{fontSize:11,color:'#7a7a6a',whiteSpace:'pre-wrap',wordBreak:'break-all',marginTop:8,maxHeight:300,overflow:'auto'}}, stk.slice(0,2000)),
+            React.createElement('div', {style:{marginTop:16,fontSize:13,color:'#555'}},
+              'This error occurred after a data import. Try clearing app data: open browser DevTools → Application → Local Storage → clear all hn_* keys, then reload.',
+            ),
+            React.createElement('button', {
+              style:{marginTop:12,padding:'10px 20px',background:'#dc2626',color:'white',border:'none',borderRadius:8,cursor:'pointer',fontSize:14,fontWeight:700},
+              onClick:()=>{ Object.keys(localStorage).filter(k=>k.startsWith('hn_')).forEach(k=>localStorage.removeItem(k)); window.location.reload(); }
+            }, '🗑 Clear All App Data and Reload')
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    root.render(React.createElement(ErrorBoundary, null, React.createElement(HollNutrition)));
   </script>
 </body>
 </html>
