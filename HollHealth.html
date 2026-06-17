@@ -179,7 +179,7 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.26';
+const APP_VERSION = '1.5.27';
 
 const PROJECTED = new Set([10,11,12]);
 
@@ -305,6 +305,28 @@ const SUBS = {
     {name:"Tangerine",portion:"2 small"},{name:"Apricots",portion:"2 medium"},
     {name:"Honeydew melon",portion:"1 cup chopped"},
   ],
+  Snack:[
+    {name:"Pretzel sticks (100 cal pack)",portion:"1 pack (28g)"},
+    {name:"Skinny Pop popcorn",portion:"1 oz bag"},
+    {name:"Rice cakes",portion:"2 cakes"},
+    {name:"Apple with almond butter",portion:"1/2 apple + 1 tsp almond butter"},
+    {name:"Celery and peanut butter",portion:"2 stalks + 1 tbsp peanut butter"},
+    {name:"Mixed nuts",portion:"1 oz (~28g)"},
+    {name:"GoMacro MacroBar",portion:"1 bar"},
+    {name:"Quest protein chips",portion:"1 bag (32g)"},
+    {name:"Veggie straws",portion:"1 oz"},
+    {name:"Sunflower seeds",portion:"1/4 cup"},
+    {name:"Pumpkin seeds",portion:"1/4 cup"},
+    {name:"Banana",portion:"1 medium"},
+    {name:"Baby carrots",portion:"1 cup + 2 tbsp hummus"},
+    {name:"Bell pepper strips and hummus",portion:"1 pepper + 3 tbsp hummus"},
+    {name:"Boiled eggs",portion:"2 large"},
+    {name:"Vegan cheese and crackers",portion:"3 crackers + 1 oz vegan cheese"},
+    {name:"Strawberry chia seed pudding",portion:"1/2 cup"},
+    {name:"Basic chia pudding",portion:"1/2 cup"},
+    {name:"Roasted almonds",portion:"12–15 almonds"},
+    {name:"Blueberry nut apple slices",portion:"1/2 apple + 1 tbsp almond butter"},
+  ],
 };
 const SUB_META = {
   Fat:      {icon:"🥑",color:"#f59e0b",bg:"#fffbeb",badge:"#fde68a",text:"#92400e"},
@@ -312,6 +334,7 @@ const SUB_META = {
   Protein:  {icon:"💪",color:"#3b82f6",bg:"#eff6ff",badge:"#bfdbfe",text:"#1e40af"},
   Vegetable:{icon:"🥦",color:"#22c55e",bg:"#f0fdf4",badge:"#bbf7d0",text:"#14532d"},
   Fruit:    {icon:"🍓",color:"#ec4899",bg:"#fdf2f8",badge:"#fbcfe8",text:"#831843"},
+  Snack:    {icon:"🍎",color:"#f97316",bg:"#fff7ed",badge:"#fed7aa",text:"#9a3412"},
 };
 
 // ─── Shared name normaliser — used everywhere recipe names are compared/keyed ─
@@ -867,7 +890,9 @@ function HollNutrition() {
     if (!dp) return;
     const meal = dp.meals[mi];
     const item = meal.items[ii];
-    const cats = detectSubCats(item.name);
+    let cats = detectSubCats(item.name);
+    // Always offer Snack swaps when in the Snacks slot
+    if (meal.slot === 'Snacks' && !cats.includes('Snack')) cats = ['Snack', ...cats];
     setSwap({di,mi,ii,item,slot:meal.slot,cats,activeCat:cats[0],alts:null});
     setSwapTab('library');
   };
@@ -3572,16 +3597,50 @@ function HollNutrition() {
               {swapTab==='ai' && (
                 <>
                   <div style={{fontSize:11,color:'#9a9a8a',marginBottom:12,padding:'8px 12px',background:'#faf7f2',borderRadius:8,lineHeight:1.6}}>
-                    AI alternatives with matching macros for <strong>{swap.slot}</strong>.
+                    AI alternatives with matching macros for <strong>{swap.item.name}</strong> ({swap.item.calories} cal · P:{swap.item.protein}g · F:{swap.item.fat}g · C:{swap.item.carbs}g).
                   </div>
-                  {!swap.alts && (
-                    <div style={{textAlign:'center',padding:32,color:'#9a9a8a'}}>
-                      <div style={{fontSize:32,marginBottom:10}}>✨</div>
-                      <div style={{fontSize:13,marginBottom:16}}>Get AI-suggested swaps with macro matching</div>
-                      <button style={S.btn()} onClick={loadAiAlts}
-                        title="Open the Claude import panel to get macro-matched swap suggestions for this item">Generate Suggestions</button>
-                    </div>
-                  )}
+                  {!swap.alts && (() => {
+                    const aiPrompt = `I need vegetarian swap suggestions for a meal item. Return ONLY a JSON array, no other text.
+
+Item to replace: "${swap.item.name}"
+Slot: ${swap.slot}
+Target macros: ~${swap.item.calories} cal, P:${swap.item.protein}g, F:${swap.item.fat}g, C:${swap.item.carbs}g
+
+Rules: vegetarian only (eggs and dairy OK). No meat, fish, shellfish, or alcohol. Avoid: mushrooms, avocado, sriracha, mayo. Keep within ±20% of the target calories.
+
+Return exactly 4 alternatives as a JSON array:
+[{"name":"...","portion":"...","calories":N,"protein":N,"fat":N,"carbs":N}, ...]`;
+                    return (
+                      <div>
+                        <div style={{fontSize:12,fontWeight:700,color:'#1b3d2a',marginBottom:8}}>Step 1 — Copy this prompt</div>
+                        <div style={{position:'relative',marginBottom:12}}>
+                          <textarea readOnly value={aiPrompt} rows={6}
+                            style={{width:'100%',fontSize:11,fontFamily:'monospace',borderRadius:8,border:'1px solid #ddd',padding:'8px 10px',resize:'none',background:'#fafafa',boxSizing:'border-box',color:'#444'}}/>
+                          <button style={{...S.btn(),position:'absolute',top:6,right:6,fontSize:11,padding:'4px 10px'}}
+                            onClick={() => { navigator.clipboard?.writeText(aiPrompt).catch(()=>{}); }}>
+                            📋 Copy
+                          </button>
+                        </div>
+                        <div style={{fontSize:12,fontWeight:700,color:'#1b3d2a',marginBottom:6}}>Step 2 — Paste Claude's JSON response here</div>
+                        <textarea rows={5} placeholder='Paste the JSON array here, e.g. [{"name":"...","calories":...}, ...]'
+                          style={{width:'100%',fontSize:11,fontFamily:'monospace',borderRadius:8,border:'1px solid #ddd',padding:'8px 10px',resize:'vertical',boxSizing:'border-box'}}
+                          id="ai-swap-paste"/>
+                        <button style={{...S.btn(),width:'100%',marginTop:8}}
+                          onClick={() => {
+                            try {
+                              const raw = document.getElementById('ai-swap-paste')?.value || '';
+                              const match = raw.match(/\[[\s\S]*\]/);
+                              if (!match) { alert('No JSON array found — paste the full response from Claude.'); return; }
+                              const alts = JSON.parse(match[0]);
+                              if (!Array.isArray(alts) || !alts.length) { alert('Could not parse alternatives. Make sure Claude returned a JSON array.'); return; }
+                              setSwap(s => ({...s, alts}));
+                            } catch(e) { alert('Parse error: ' + e.message); }
+                          }}>
+                          ✓ Use These Alternatives
+                        </button>
+                      </div>
+                    );
+                  })()}
                   {swap.alts?.map((alt,i) => (
                     <div key={i} style={{padding:'12px 14px',background:'#faf7f2',borderRadius:10,marginBottom:8,border:'2px solid #eee',cursor:'pointer',transition:'all 0.15s'}}
                       onMouseEnter={e=>{e.currentTarget.style.borderColor='#5a8e6a';e.currentTarget.style.background='#f0f7f0';}}
@@ -3591,6 +3650,12 @@ function HollNutrition() {
                       <div style={{fontSize:12,color:'#7a7a6a'}}>{alt.portion} · <strong>{alt.calories}</strong> cal · P:{alt.protein}g · F:{alt.fat}g · C:{alt.carbs}g</div>
                     </div>
                   ))}
+                  {swap.alts && (
+                    <button style={{...S.btn('out'),width:'100%',marginTop:4,fontSize:11}}
+                      onClick={() => setSwap(s => ({...s, alts:null}))}>
+                      ↩ Get new suggestions
+                    </button>
+                  )}
                 </>
               )}
             </div>
