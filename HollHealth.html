@@ -110,20 +110,24 @@
         const scripts = document.querySelectorAll('script[type="text/babel-pending"]');
         scripts.forEach(s => {
           try {
-            // runtime:'classic' forces React.createElement() — prevents Babel from
-            // generating "import { jsx } from react/jsx-runtime" which breaks new Function()
-            // sourceType:'script' prevents Babel treating the code as an ES module
             const code = Babel.transform(s.textContent, {
               presets: [['react', { runtime: 'classic' }]],
               sourceType: 'script'
             }).code;
-            const fn = new Function(code);
-            fn();
+            // Inject as a real <script> element so the browser executes it in
+            // global non-module context — avoids "import outside module" error
+            // that occurs when using new Function(code)
+            const el = document.createElement('script');
+            el.textContent = code;
+            document.head.appendChild(el);
+            const el = document.createElement('script');
+            el.textContent = code;
+            document.head.appendChild(el);
           } catch(e) {
             document.getElementById('diag').style.display = 'block';
             const d = document.createElement('div');
             d.style.cssText = 'margin-top:12px;padding:14px;background:#fef2f2;border-radius:8px;font-size:13px;font-family:monospace;white-space:pre-wrap;color:#dc2626;';
-            d.textContent = 'Babel/JSX Error:\n' + (e.message || String(e));
+            d.textContent = 'Babel/JSX Error: ' + (e.message || String(e));
             document.getElementById('diag').appendChild(d);
           }
         });
@@ -131,6 +135,16 @@
         document.getElementById('diag').style.display = 'block';
         step('Babel compilation error: ' + e.message, false);
       }
+    });
+
+    // Catch any runtime errors from the injected script
+    window.addEventListener('error', function(e) {
+      if (document.getElementById('root') && document.getElementById('root').childElementCount > 0) return;
+      document.getElementById('diag').style.display = 'block';
+      const d = document.createElement('div');
+      d.style.cssText = 'margin-top:12px;padding:14px;background:#fef2f2;border-radius:8px;font-size:13px;font-family:monospace;white-space:pre-wrap;color:#dc2626;';
+      d.textContent = 'Runtime Error: ' + (e.message || String(e));
+      document.getElementById('diag').appendChild(d);
     });
   </script>
   <script type="text/babel-pending" data-presets="react">
@@ -168,7 +182,7 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.21';
+const APP_VERSION = '1.5.22';
 
 const PROJECTED = new Set([10,11,12]);
 
