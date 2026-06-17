@@ -179,7 +179,7 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.23';
+const APP_VERSION = '1.5.24';
 
 const PROJECTED = new Set([10,11,12]);
 
@@ -3380,6 +3380,9 @@ function HollNutrition() {
                     const data = {
                       plans: plans, notes: notes, groc: groc,
                       water: water, customT: customT, totalMon: totalMon,
+                      recipe_library: recipeLibrary,
+                      locked: JSON.parse(LS.get('hn_locked')?.value || '{}'),
+                      mon: mon,
                       exportDate: new Date().toISOString(),
                     };
                     const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
@@ -3402,14 +3405,33 @@ function HollNutrition() {
                       reader.onload = (ev) => {
                         try {
                           const d = JSON.parse(ev.target.result);
-                          if (d.plans)   savePlans(d.plans);
-                          if (d.notes)   saveNotes(d.notes);
-                          if (d.groc)    saveGroc(d.groc);
-                          if (d.water)   saveWater(d.water);
-                          if (d.customT) saveCustomT(d.customT);
-                          if (d.totalMon){ setTotalMon(d.totalMon); LS.set('hn_totmon', String(d.totalMon)); }
-                          alert('Data imported successfully!');
-                          setShowData(false);
+                          // Support both native format (plans/groc/customT) and
+                          // hn_* raw key format (hn_plans/hn_groc/hn_customt)
+                          const plans_  = d.plans   || (d.hn_plans   ? JSON.parse(d.hn_plans)   : null);
+                          const notes_  = d.notes   || (d.hn_notes   ? JSON.parse(d.hn_notes)   : null);
+                          const groc_   = d.groc    || (d.hn_groc    ? JSON.parse(d.hn_groc)    : null);
+                          const water_  = d.water   || (d.hn_water   ? JSON.parse(d.hn_water)   : null);
+                          const customT_= d.customT || (d.hn_customt ? JSON.parse(d.hn_customt) : null);
+                          const locked_ = d.locked  || (d.hn_locked  ? JSON.parse(d.hn_locked)  : null);
+                          const reclib_ = d.recipe_library || (d.hn_recipe_library ? JSON.parse(d.hn_recipe_library) : null);
+                          const mon_    = d.mon     || (d.hn_mon     ? +d.hn_mon   : null);
+                          const total_  = d.totalMon;
+                          if (plans_)   savePlans(plans_);
+                          if (notes_)   saveNotes(notes_);
+                          if (groc_)    saveGroc(groc_);
+                          if (water_)   saveWater(water_);
+                          if (customT_) saveCustomT(customT_);
+                          if (locked_) { LS.set('hn_locked', JSON.stringify(locked_)); }
+                          if (reclib_) { saveRecipeLibrary(reclib_); }
+                          if (mon_)    { setMon(mon_); LS.set('hn_mon', String(mon_)); }
+                          if (total_)  { setTotalMon(total_); LS.set('hn_totmon', String(total_)); }
+                          const counts = [
+                            plans_  ? `${Object.keys(plans_).length} months of plans` : '',
+                            reclib_ ? `${Object.keys(reclib_).length} recipe cards` : '',
+                            locked_ ? `${Object.keys(locked_).filter(k=>locked_[k]).length} locked months` : '',
+                          ].filter(Boolean).join(', ');
+                          alert('Import successful!' + (counts ? '\n\n' + counts : '') + '\n\nThe page will reload to apply all changes.');
+                          window.location.reload();
                         } catch(err) { alert('Invalid backup file: ' + err.message); }
                       };
                       reader.readAsText(file);
