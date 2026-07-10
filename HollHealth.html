@@ -204,9 +204,12 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.35';
+const APP_VERSION = '1.5.38';
 const APP_CHANGELOG = [
-  { version: '1.5.35', date: '2026-07-10', notes: 'Added ✦ Build from Library button (library-driven plan generation from existing recipe cards); renamed old Full Package to 🎲 Random Package from Claude; new libpackage prompt mode injects recipe library organized by slot; libpackage shares fullpackage import handler; all help text, process flows, and modal descriptions updated.' },
+  { version: '1.5.38', date: '2026-07-10', notes: 'Added Goal Weight and Program Start Date fields to Preferences. seedFromPrior() now uses goal-weight gap for graduated deficit: >5 lbs = full −250 cal, 1–5 lbs = half −125 cal, at/below goal = maintenance. monDateRange() helper computes Mon–Sun date ranges for each 28-day cycle from program start. Month strip buttons show date range on hover; Preferences shows current/next cycle dates and goal weight gap indicator. Plan Target card description updated to reflect goal-weight-aware deficit.' },
+  { version: '1.5.37', date: '2026-07-10', notes: 'M13+ macro seeding now weight- and goal-aware. seedFromPrior() helper scales prior month calories and p/f/c proportionally to calcTargetCals result (Mifflin-St Jeor + goal adjustment). Day-type variance preserved (low/mod/high). Falls back to prior month as-is if no weight logged, with prompt to log weight. Banner shows current weight and calorie target when scaling is active.' },
+  { version: '1.5.36', date: '2026-07-10', notes: 'M13+ macro targets now seeded from prior month instead of falling back to M9. mData derivation, edit form seeding, and save handler fallback all updated. Banner subtitle and month strip indicator updated.' },
+  { version: '1.5.35', date: '2026-07-10', notes: 'Added ✦ Build from Library button (library-driven plan generation from existing recipe cards); renamed old Full Package to 🎲 Random Package from Claude; new libpackage prompt mode injects recipe library organized by slot; libpackage shares fullpackage import handler; all help text, process flows, and modal descriptions updated. APP_CHANGELOG constant added; 📋 Changelog panel added to header.' },
   { version: '1.5.34', date: '2026-07-10', notes: 'Water tracking removed entirely.' },
   { version: '1.5.33', date: '2026-07-10', notes: 'Combined release: VShred mirror rule in prompt + enforced on import; M8 customT extracted; full M1-M9 plans rebuilt from recipe sections.' },
   { version: '1.5.32', date: '2026-07-10', notes: 'M8 customT extracted; full plans rebuilt from recipe sections.' },
@@ -559,6 +562,25 @@ const calcTargetCals = (weightLbs, prefs) => {
   return {bmr, maintenance, target: maintenance + adj};
 };
 
+// ─── Month date range — returns Mon start and Sun end for month N ─────────────
+// Based on program start date (always a Monday) + 28-day cycles.
+const monDateRange = (monthNum, programStart) => {
+  if (!programStart) return null;
+  try {
+    const [y, m, d] = programStart.split('-').map(Number);
+    const start = new Date(y, m - 1, d);
+    // Verify start is a Monday; if not, advance to next Monday
+    const dow = start.getDay(); // 0=Sun,1=Mon...
+    if (dow !== 1) start.setDate(start.getDate() + ((8 - dow) % 7));
+    const mStart = new Date(start);
+    mStart.setDate(mStart.getDate() + (monthNum - 1) * 28);
+    const mEnd = new Date(mStart);
+    mEnd.setDate(mEnd.getDate() + 27);
+    const fmt = (dt) => dt.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    return { start: mStart, end: mEnd, label: `${fmt(mStart)}–${fmt(mEnd)}` };
+  } catch(e) { return null; }
+};
+
 // ─── Prompt builder — single source of truth for all Claude prompts ──────────
 const buildPrompt = (si, plans, prefs, notes) => {
   if (!si) return '';
@@ -775,6 +797,8 @@ function HollNutrition() {
     age: 55,
     goal: 'loss',
     activity: 'light',
+    goalWeight: '',
+    programStart: '2025-07-07',
     avoidList: [...DEFAULT_AVOID],
     alwaysItems: [],
     preferItems: [],
@@ -947,7 +971,70 @@ function HollNutrition() {
   };
 
   // ── Derived state ─────────────────────────────────────────────────────────────
-  const mData   = customT[mon] || MONTH_DATA[mon] || MONTH_DATA[9];
+
+  // Latest weight from progress log — used for calorie-adjusted seeding
+  const latestNoteWeight = (notes||[]).filter(n=>n.weight).sort((a,b)=>b.date.localeCompare(a.date))[0]?.weight;
+  const calcSeed = latestNoteWeight ? calcTargetCals(+latestNoteWeight, prefs||{}) : null;
+
+  // seedFromPrior: builds a 7-day macro set for M13+ by taking the prior month's
+  // macro structure and scaling calories (and p/f/c proportionally) to match the
+  // current calc target if a weight is logged. Falls back gracefully if not.
+  // Goal weight gap drives deficit size:
+  //   >5 lbs from goal  → full deficit (loss=-250, build=+200, maintain=0)
+  //   1–5 lbs from goal → half deficit (-125) — easing toward maintenance
+  //   at or below goal  → maintenance (0 adj) — suggest switching goal to Maintain
+  //   above goal after reaching it → light deficit (-125)
+  const seedFromPrior = (priorData) => {
+    if (!priorData) return null;
+    if (!calcSeed) return priorData; // no weight logged — use prior month as-is
+
+    const gw = prefs.goalWeight ? +prefs.goalWeight : null;
+    const cw = +latestNoteWeight;
+    const gap = gw ? cw - gw : null; // positive = above goal, negative = below
+
+    // Determine calorie adjustment based on goal type and weight gap
+    let goalAdj;
+    if (prefs.goal === 'build') {
+      goalAdj = 200;
+    } else if (prefs.goal === 'maintain') {
+      goalAdj = 0;
+    } else {
+      // loss — modulate by gap to goal weight
+      if (gap === null) {
+        goalAdj = -250; // no goal weight set — use full deficit
+      } else if (gap <= 0) {
+        goalAdj = 0;    // at or below goal — maintenance
+      } else if (gap <= 5) {
+        goalAdj = -125; // within 5 lbs — half deficit
+      } else {
+        goalAdj = -250; // more than 5 lbs away — full deficit
+      }
+    }
+
+    const result = {};
+    [1,2,3,4,5,6,7].forEach(d => {
+      const src = priorData[d];
+      if (!src) return;
+      // Day-type variance matching Coach Cedric pattern
+      const dayVariance = {1:-20, 2:0, 3:20, 4:-20, 5:0, 6:20, 7:-20};
+      const targetCal = Math.round(calcSeed.maintenance + goalAdj + (dayVariance[d] || 0));
+      const scale = src.cal > 0 ? targetCal / src.cal : 1;
+      result[d] = {
+        cal: targetCal,
+        p: Math.round(src.p * scale),
+        f: Math.round(src.f * scale),
+        c: Math.round(src.c * scale),
+        fb: Math.round(src.fb * scale),
+        ct: src.ct,
+      };
+    });
+    return result;
+  };
+
+  // For M13+: if no customT saved, seed from prior month with goal/weight adjustment
+  const priorMonData = customT[mon-1] || MONTH_DATA[mon-1] || MONTH_DATA[9];
+  const seededData   = (mon > 12 && !customT[mon]) ? seedFromPrior(priorMonData) : null;
+  const mData   = customT[mon] || MONTH_DATA[mon] || seededData || priorMonData;
   const dRef    = mData[day];
   const curDay  = plans[mon]?.[day-1];
   const curGroc = groc[mon];
@@ -1755,7 +1842,7 @@ function HollNutrition() {
               {[
                 ['1','Select your month','Click a month button in the MONTH strip. M1–M9 are past months — selecting one shows the 📊 History view with macro targets and trends, locked by default. M10+ are current/future — selecting one shows the 📋 Planner. M10–M12 show projected targets (◈) until you enter real ones.','#3b82f6'],
                 ['2','Set up Preferences first','Go to ⚙️ Preferences before generating any plans. Enter your height, age, activity level, and goal. The tool calculates your calorie target automatically from your latest logged weight. Add foods to Always Include or Prefer Often, review your Avoid list, and set your preferred Theme and Layout.','#8b5cf6'],
-                ['3','Enter real targets for M10+','When your nutritionist provides updated targets, go to the Planner for that month and click + Enter Real Targets in the ◈ banner. Days 4/5/6 auto-mirror Days 1/2/3. The ◈ indicator disappears once saved.','#6366f1'],
+                ['3','Macro targets for new months','For M10–M12, click + Enter Real Targets in the ◈ banner when your nutritionist provides them. For M13 and beyond, macros are automatically seeded from the prior month as a baseline — adjust them in the Planner if your goal changes. Days 4/5/6 always auto-mirror Days 1/2/3.','#6366f1'],
                 ['4','Generate a new month plan','In the Planner, click ✦ Build from Library to generate a plan using your existing 12-month recipe library — this is the preferred flow. Or use 🎲 Random Package from Claude to have Claude invent new dishes freely. Copy the prompt, paste into claude.ai, paste the JSON back, and click ✓ Import.','#10b981'],
                 ['5','Download your PDF','After importing, click ⬇ Download PDF in the Planner to generate the full package: Weekly Overview, Grocery List, Daily Breakouts, and Recipe pages. The Weekly Overview shows dish names as single checkboxes for easy tracking.','#f59e0b'],
                 ['6','Review your grocery list','The Grocery List appears at the bottom of the Planner tab. Check items off as you shop. It also prints on Page 2 of the PDF.','#ec4899'],
@@ -1780,7 +1867,7 @@ function HollNutrition() {
                 <strong>Carb cycle:</strong> Days 1, 4, 7 = Low Carb · Days 2, 5 = Moderate Carb · Days 3, 6 = High Carb. Days 4/5/6 always mirror Days 1/2/3.
               </div>
               <div style={{padding:'9px 14px',background:'#f3effd',borderRadius:8,fontSize:12,color:'#3b2a6e'}}>
-                <strong>Month indicators:</strong> ◈ = projected targets · 🔒 = locked · ★ = M6 mirrors M2 · ✓ = custom targets saved
+                <strong>Month indicators:</strong> ◈ = seeded from prior month (M13+) or projected (M10–12) · 🔒 = locked · ★ = M6 mirrors M2 · ✓ = custom targets saved
               </div>
               <div style={{padding:'9px 14px',background:'#faf7f2',borderRadius:8,fontSize:12,color:'#555'}}>
                 <strong>Navigation:</strong> The bottom bar is always visible. Use ⚙️ Preferences → Display Settings to switch between Desktop and Mobile layouts, or override Auto-detect.
@@ -1854,20 +1941,28 @@ function HollNutrition() {
       {/* Month strip */}
       <div className="hh-month-strip" style={{background:DK?'#1e2820':'white',borderBottom:`1px solid ${DK?'#3a4a3c':'#e8e2d8'}`,padding:'9px 20px',display:'flex',gap:5,overflowX:'auto',position:'sticky',top:52,zIndex:50,alignItems:'center'}}>
         <div style={{fontSize:11,fontWeight:700,color:'#9a9a8a',marginRight:4,whiteSpace:'nowrap'}}>MONTH</div>
-        {Array.from({length:totalMon},(_,i) => i+1).map(m => (
-          <button key={m} style={mpBtn(m)} onClick={() => changeMon(m)}>
-            M{m}{lockedMonths[m]?' 🔒':m===6?' ★':''}
-            {(PROJECTED.has(m)||m>12)&&!customT[m]?' ◈':''}
-            {customT[m]?' ✓':''}
-          </button>
-        ))}
+        {Array.from({length:totalMon},(_,i) => i+1).map(m => {
+          const dr = monDateRange(m, prefs.programStart);
+          return (
+            <button key={m} style={mpBtn(m)} onClick={() => changeMon(m)}
+              title={dr ? `M${m}: ${dr.label}` : `Month ${m}`}>
+              M{m}{lockedMonths[m]?' 🔒':m===6?' ★':''}
+              {(PROJECTED.has(m)||m>12)&&!customT[m]?' ◈':''}
+              {customT[m]?' ✓':''}
+            </button>
+          );
+        })}
         <button onClick={addMonth}
           title={`Add Month ${totalMon+1} to the program`}
           style={{padding:'5px 12px',borderRadius:20,border:'2px dashed #b8d4c8',background:'white',color:'#5a8e6a',fontSize:12,fontWeight:700,flexShrink:0,whiteSpace:'nowrap'}}>
           + M{totalMon+1}
         </button>
         {mon===6 && <span style={{fontSize:11,color:'#9a9a8a',whiteSpace:'nowrap',flexShrink:0}}>★ identical macros to Month 2</span>}
-        {isProj && <span style={{fontSize:11,color:'#92400e',whiteSpace:'nowrap',flexShrink:0,fontWeight:600}}>◈ projected — enter real targets in the Planner when available</span>}
+        {(() => {
+          const dr = monDateRange(mon, prefs.programStart);
+          return dr ? <span style={{fontSize:11,color:'#9a9a8a',whiteSpace:'nowrap',flexShrink:0}}>{dr.label}</span> : null;
+        })()}
+        {isProj && <span style={{fontSize:11,color:'#92400e',whiteSpace:'nowrap',flexShrink:0,fontWeight:600}}>{mon > 12 ? `◈ seeded from M${mon-1}${calcSeed ? ` · scaled to ${latestNoteWeight} lbs` : ' · log weight to enable scaling'}` : '◈ projected — enter real targets in the Planner when available'}</span>}
       </div>
 
       {/* Error toast */}
@@ -2264,10 +2359,22 @@ function HollNutrition() {
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:showEditT?14:0}}>
                   <div>
                     <div style={{fontWeight:700,fontSize:13,color:customT[mon]?'#1b3d2a':'#92400e'}}>
-                      {customT[mon]?`✓ Custom targets saved for Month ${mon}`:`◈ Month ${mon} — projected targets`}
+                      {customT[mon]?`✓ Custom targets saved for Month ${mon}`:`◈ Month ${mon} — targets seeded from Month ${mon-1}`}
                     </div>
                     <div style={{fontSize:12,color:'#7a7a6a',marginTop:2}}>
-                      {customT[mon]?'Overrides projected values.':'Enter real targets when your nutritionist provides them.'}
+                      {(() => {
+                        if (customT[mon]) return 'Overrides seeded values.';
+                        if (mon <= 12) return 'Enter real targets when your nutritionist provides them.';
+                        if (!calcSeed) return `Using Month ${mon-1} macros as baseline. Log a weight in 📓 Progress to enable automatic calorie scaling.`;
+                        const gw = prefs.goalWeight ? +prefs.goalWeight : null;
+                        const cw = +latestNoteWeight;
+                        const gap = gw ? +(cw - gw).toFixed(1) : null;
+                        const adjLabel = gap === null ? 'full −250 cal deficit (set a goal weight in Preferences for smarter scaling)'
+                          : gap <= 0 ? `at or below goal weight — seeded at maintenance (${calcSeed.maintenance} cal/day)`
+                          : gap <= 5 ? `${gap} lbs from goal — half deficit seeded (−125 cal/day)`
+                          : `${gap} lbs from goal — full deficit seeded (−250 cal/day)`;
+                        return `Scaled to ${cw} lbs · ${adjLabel}. Adjust in edit form if needed.`;
+                      })()}
                     </div>
                   </div>
                   <div style={{display:'flex',gap:8}}>
@@ -2282,7 +2389,7 @@ function HollNutrition() {
                       title={showEditT?'Discard changes':customT[mon]?'Edit the saved macro targets for this month':'Enter the real macro targets from your nutritionist for this month'}
                       onClick={() => {
                         if (!showEditT) {
-                          const src = customT[mon]||MONTH_DATA[mon]||MONTH_DATA[9];
+                          const src = customT[mon] || MONTH_DATA[mon] || seededData || customT[mon-1] || MONTH_DATA[mon-1] || MONTH_DATA[9];
                           const f={};
                           [1,2,3,7].forEach(d => { f[`d${d}_cal`]=src[d].cal; f[`d${d}_p`]=src[d].p; f[`d${d}_f`]=src[d].f; f[`d${d}_c`]=src[d].c; f[`d${d}_fb`]=src[d].fb; });
                           setEditForm(f);
@@ -2313,10 +2420,11 @@ function HollNutrition() {
                     <button style={S.btn()}
                       title="Save these macro targets for this month — replaces projected values permanently"
                       onClick={async () => {
+                      const fallback = customT[mon-1] || MONTH_DATA[mon-1] || seededData || MONTH_DATA[9];
                       const mk = (d) => ({
-                        cal:editForm[`d${d}_cal`]||MONTH_DATA[9][d].cal, p:editForm[`d${d}_p`]||MONTH_DATA[9][d].p,
-                        f:editForm[`d${d}_f`]||MONTH_DATA[9][d].f,     c:editForm[`d${d}_c`]||MONTH_DATA[9][d].c,
-                        fb:editForm[`d${d}_fb`]||MONTH_DATA[9][d].fb,
+                        cal:editForm[`d${d}_cal`]||fallback[d].cal, p:editForm[`d${d}_p`]||fallback[d].p,
+                        f:editForm[`d${d}_f`]||fallback[d].f,     c:editForm[`d${d}_c`]||fallback[d].c,
+                        fb:editForm[`d${d}_fb`]||fallback[d].fb,
                         ct:[1,4,7].includes(d)?'low':[2,5].includes(d)?'moderate':'high',
                       });
                       await saveCustomT({...customT,[mon]:{1:mk(1),2:mk(2),3:mk(3),4:mk(1),5:mk(2),6:mk(3),7:mk(7)}});
@@ -2799,6 +2907,12 @@ function HollNutrition() {
                     </div>
                   ))}
                   <div>
+                    <label style={{fontSize:10,fontWeight:700,color:'#9a9a8a',display:'block',marginBottom:4,letterSpacing:'0.5px'}}>GOAL WEIGHT (LBS)</label>
+                    <input type="number" min={80} max={400} value={prefs.goalWeight||''} style={{...S.inp,textAlign:'center'}}
+                      placeholder="e.g. 159"
+                      onChange={e => savePrefs({...prefs, goalWeight:+e.target.value})}/>
+                  </div>
+                  <div>
                     <label style={{fontSize:10,fontWeight:700,color:'#9a9a8a',display:'block',marginBottom:4,letterSpacing:'0.5px'}}>ACTIVITY LEVEL</label>
                     <select value={prefs.activity||'light'} style={S.inp} onChange={e=>savePrefs({...prefs,activity:e.target.value})}>
                       <option value="sedentary">Sedentary (desk only)</option>
@@ -2815,6 +2929,11 @@ function HollNutrition() {
                       <option value="build">⬆ Strength Building</option>
                     </select>
                   </div>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:700,color:'#9a9a8a',display:'block',marginBottom:4,letterSpacing:'0.5px'}}>PROGRAM START DATE</label>
+                    <input type="date" value={prefs.programStart||'2025-07-07'} style={S.inp}
+                      onChange={e => savePrefs({...prefs, programStart:e.target.value})}/>
+                  </div>
                 </div>
                 {calc ? (
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
@@ -2822,7 +2941,15 @@ function HollNutrition() {
                       ['BMR',calc.bmr,'cal/day','#8b5cf6','Base metabolic rate at rest'],
                       ['Maintenance',calc.maintenance,'cal/day','#5a8e6a','Calories to stay at current weight'],
                       ['Plan Target',calc.target,'cal/day',prefs.goal==='loss'?'#3b7dd8':prefs.goal==='build'?'#dc2626':'#5a8e6a',
-                        prefs.goal==='loss'?'250 cal deficit for ~0.5 lb/wk loss':prefs.goal==='build'?'200 cal surplus for lean gain':'At maintenance'],
+                        (() => {
+                          if (prefs.goal === 'build') return '200 cal surplus for lean gain';
+                          if (prefs.goal === 'maintain') return 'At maintenance';
+                          if (!prefs.goalWeight || !latestWeight) return '250 cal deficit for ~0.5 lb/wk loss';
+                          const gap = +(latestWeight - +prefs.goalWeight).toFixed(1);
+                          if (gap <= 0) return 'At or below goal — consider switching to Maintain';
+                          if (gap <= 5) return `${gap} lbs to goal — half deficit (−125 cal)`;
+                          return `${gap} lbs to goal — full deficit (−250 cal)`;
+                        })()],
                     ].map(([lbl,val,unit,col,note]) => (
                       <div key={lbl} style={{background:'#faf8f4',borderRadius:10,padding:'12px 14px',border:`2px solid ${col}22`}}>
                         <div style={{fontSize:11,color:'#9a9a8a',fontWeight:700,marginBottom:2}}>{lbl.toUpperCase()}</div>
@@ -2840,8 +2967,23 @@ function HollNutrition() {
                 {latestEntry && (
                   <div style={{marginTop:10,fontSize:12,color:'#7a7a6a'}}>
                     Based on latest logged weight: <strong>{latestEntry.weight} lbs</strong> on {latestEntry.date}. Update in the 📓 Progress tab.
+                    {prefs.goalWeight && (() => {
+                      const gap = +(+latestEntry.weight - +prefs.goalWeight).toFixed(1);
+                      if (gap <= 0) return <span style={{marginLeft:10,color:'#10b981',fontWeight:700}}>✓ At or below goal weight ({prefs.goalWeight} lbs) — consider switching goal to Maintain.</span>;
+                      if (gap <= 5) return <span style={{marginLeft:10,color:'#f59e0b',fontWeight:700}}>⬇ {gap} lbs from goal weight ({prefs.goalWeight} lbs) — next month will use half deficit.</span>;
+                      return <span style={{marginLeft:10,color:'#3b7dd8',fontWeight:700}}>⬇ {gap} lbs from goal weight ({prefs.goalWeight} lbs) — full deficit continues.</span>;
+                    })()}
                   </div>
                 )}
+                {prefs.programStart && (() => {
+                  const curDr = monDateRange(totalMon, prefs.programStart);
+                  const nextDr = monDateRange(totalMon + 1, prefs.programStart);
+                  return (
+                    <div style={{marginTop:8,fontSize:12,color:'#7a7a6a'}}>
+                      Program start: <strong>{prefs.programStart}</strong> · Current cycle M{totalMon}: {curDr?.label||'—'} · Next cycle M{totalMon+1} starts: <strong>{nextDr?.start.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})||'—'}</strong>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* ── Love — Always Include ── */}
