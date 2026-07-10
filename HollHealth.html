@@ -48,6 +48,31 @@
     };
 
     const s1 = step('Loading React from CDN…');
+
+    // If React hasn't loaded after 10 seconds, show the CDN-blocked error
+    // (onerror alone won't fire on a slow/stalled network — only on outright failures)
+    var _cdnTimer = setTimeout(function() {
+      if (typeof React === 'undefined') {
+        updateStep(s1, 'Loading React from CDN… (timeout — CDN may be blocked or unavailable)', false);
+        document.getElementById('diag').style.display = 'block';
+        const d = document.createElement('div');
+        d.style.cssText = 'margin-top:12px;padding:14px;background:#fef2f2;border-radius:8px;font-size:13px;color:#dc2626;line-height:1.7;';
+        d.innerHTML =
+          '<strong>CDN timeout after 10 seconds.</strong><br>' +
+          'The app loads React, Babel, and jsPDF from external CDNs (unpkg.com, cdnjs.cloudflare.com).<br><br>' +
+          'Try these fixes:<br>' +
+          '1. Open this file in a different browser (try Edge or Firefox)<br>' +
+          '2. Check your internet connection — the CDNs need to be reachable<br>' +
+          '3. If on a corporate network, the CDNs may be blocked — open from <strong>GitHub Pages</strong> instead of a local file<br>' +
+          '4. Visit <a href="https://unpkg.com" target="_blank">https://unpkg.com</a> to check if the CDN is reachable from your browser';
+        document.getElementById('diag').appendChild(d);
+      }
+    }, 10000);
+
+    // Clear the timer once React loads successfully
+    window.addEventListener('load', function() {
+      if (typeof React !== 'undefined') clearTimeout(_cdnTimer);
+    });
   </script>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin></script>
@@ -179,7 +204,22 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.27';
+const APP_VERSION = '1.5.35';
+const APP_CHANGELOG = [
+  { version: '1.5.35', date: '2026-07-10', notes: 'Added ✦ Build from Library button (library-driven plan generation from existing recipe cards); renamed old Full Package to 🎲 Random Package from Claude; new libpackage prompt mode injects recipe library organized by slot; libpackage shares fullpackage import handler; all help text, process flows, and modal descriptions updated.' },
+  { version: '1.5.34', date: '2026-07-10', notes: 'Water tracking removed entirely.' },
+  { version: '1.5.33', date: '2026-07-10', notes: 'Combined release: VShred mirror rule in prompt + enforced on import; M8 customT extracted; full M1-M9 plans rebuilt from recipe sections.' },
+  { version: '1.5.32', date: '2026-07-10', notes: 'M8 customT extracted; full plans rebuilt from recipe sections.' },
+  { version: '1.5.31', date: '2026-07-10', notes: 'VShred carb-cycle mirror rule (D4=D1, D5=D2, D6=D3) added to Full Package prompt and enforced on import.' },
+  { version: '1.5.30', date: '2026-07-10', notes: 'Preferences (avoidList, limitItems, alwaysItems, preferItems) added to both export and import handler.' },
+  { version: '1.5.29', date: '2026-07-10', notes: 'CDN timeout (10s) with actionable error message when React/Babel fail to load.' },
+  { version: '1.5.28', date: '2026-07-10', notes: 'Limit Per Week preference; 7-day backup reminders; Process flow help panel; prefs included in export.' },
+  { version: '1.5.27', date: '2026-07-10', notes: 'Snack category added to swap bible (20 items); AI Suggestions rebuilt as prompt-copy/paste flow.' },
+  { version: '1.5.26', date: '2026-07-10', notes: 'Clear All App Data button added to Backup section.' },
+  { version: '1.5.25', date: '2026-07-10', notes: 'React Error Boundary shows real error messages; defensive recipe parsing.' },
+  { version: '1.5.24', date: '2026-07-10', notes: 'Fixed backup import format mismatch (hn_* prefix vs native keys); Error Boundary added.' },
+  { version: '1.5.23', date: '2026-07-10', notes: 'Fixed duplicate const el declaration causing SyntaxError on GitHub Pages.' },
+];
 
 const PROJECTED = new Set([10,11,12]);
 
@@ -541,12 +581,14 @@ const buildPrompt = (si, plans, prefs, notes) => {
   const AVOID_STR = avoidItems.length ? `Never use: ${avoidItems.join(', ')}.` : '';
   const DIET = `Vegetarian (eggs + dairy ok, NO meat/fish/seafood/alcohol). ${AVOID_STR} Use oat milk for all milk. Protein Supplement = oat milk shake (150cal 24p 3f 10c).${calcResult ? ` Goal: ${goalLabel} (target ~${baseCals} cal/day).` : ''}`;
 
-  // Favorites injection
+  // Favorites + limits injection
   const always = ((prefs||{}).alwaysItems||[]);
   const prefer = ((prefs||{}).preferItems||[]);
+  const limit  = ((prefs||{}).limitItems||[]);
   const FAV_STR = [
     always.length ? `Always include somewhere in the week: ${always.join(', ')}.` : '',
     prefer.length ? `Strongly prefer these when macro-appropriate (rotate, do not repeat every day): ${prefer.join(', ')}.` : '',
+    limit.length  ? `Limit to max 2 appearances per week (across all meals and days): ${limit.join(', ')}.` : '',
     'Rotate dinner recipes — do not repeat any dinner from the prior month.',
     'Vary protein sources across the week — do not use eggs as the primary protein in more than 2 breakfast slots or more than once in lunch slots.',
   ].filter(Boolean).join(' ');
@@ -555,7 +597,7 @@ const buildPrompt = (si, plans, prefs, notes) => {
   const DAY_FMT = `{"dayNumber":N,"cycleType":"low|moderate|high","totalCalories":N,"macros":{"protein":N,"fat":N,"carbs":N,"fiber":N},"meals":[{"slot":"Breakfast|Lunch|Snacks|Dinner|Protein Supplement","totalCalories":N,"protein":N,"fat":N,"carbs":N,"items":[{"name":"S","calories":N,"protein":N,"fat":N,"carbs":N,"portion":"S"}]}]}`;
 
   if (si.mode === 'week')
-    return `Generate a full 7-day vegetarian meal plan for Month ${M} using a 3-day carb cycle (${CYCLE_TGTS}). ${DIET} ${FAV_STR} Return ONLY a JSON array of 7 day objects: [${DAY_FMT}]`;
+    return `Generate a full 7-day vegetarian meal plan for Month ${M} using a 3-day carb cycle (${CYCLE_TGTS}). IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is unique. ${DIET} ${FAV_STR} Return ONLY a JSON array of 7 day objects: [${DAY_FMT}]`;
   if (si.mode === 'day') {
     const CT = ['','low','moderate','high','low','moderate','high','low'][D];
     const CAL = [0,lowCal,modCal,hiCal,lowCal,modCal,hiCal,lowCal][D];
@@ -566,8 +608,45 @@ const buildPrompt = (si, plans, prefs, notes) => {
     const names = [...new Set(wk.filter(Boolean).flatMap(d => d.meals.flatMap(m => m.items.map(i => i.name))))];
     return `Build a grocery list from these specific ingredients: ${names.join(', ')}. Consolidate duplicates, organize by store section. Return ONLY JSON: {"categories":[{"name":"S","items":["S"]}]}`;
   }
+  if (si.mode === 'libpackage') {
+    // Build dish lists from the recipe library, grouped by likely slot
+    const lib = si.library || {};
+    const libNames = Object.values(lib).map(r => r.name).filter(Boolean);
+    const breakfastDishes = libNames.filter(n => {
+      const nl = n.toLowerCase();
+      return nl.includes('oatmeal') || nl.includes('smoothie') || nl.includes('omelet') || nl.includes('toast') ||
+             nl.includes('waffle') || nl.includes('cereal') || nl.includes('sausage') || nl.includes('egg') ||
+             nl.includes('granola') || nl.includes('skillet') || nl.includes('bagel') || nl.includes('pancake') || nl.includes('pudding');
+    });
+    const lunchDishes = libNames.filter(n => {
+      const nl = n.toLowerCase();
+      return nl.includes('salad') || nl.includes('wrap') || nl.includes('sandwich') || nl.includes('soup') ||
+             nl.includes('bowl') || nl.includes('hummus') || nl.includes('pasta') || nl.includes('stir fry') ||
+             nl.includes('chickpea') || nl.includes('lentil') || nl.includes('risotto');
+    });
+    const dinnerDishes = libNames.filter(n => {
+      const nl = n.toLowerCase();
+      return nl.includes('bowl') || nl.includes('stew') || nl.includes('soup') || nl.includes('tacos') ||
+             nl.includes('pasta') || nl.includes('enchilada') || nl.includes('curry') || nl.includes('dal') ||
+             nl.includes('korma') || nl.includes('tikka') || nl.includes('casserole') || nl.includes('stir fry') ||
+             nl.includes('wings') || nl.includes('zoodles') || nl.includes('burrito') || nl.includes('meatball') ||
+             nl.includes('risotto') || nl.includes('frittata') || nl.includes('potatoes') || nl.includes('mash');
+    });
+    const snackDishes = libNames.filter(n => {
+      const nl = n.toLowerCase();
+      return nl.includes('peanut butter') || nl.includes('nuts') || nl.includes('seeds') || nl.includes('crackers') ||
+             nl.includes('popcorn') || nl.includes('fruit') || nl.includes('apple') || nl.includes('celery') ||
+             nl.includes('granola bar') || nl.includes('cheese') || nl.includes('pretzels') || nl.includes('straws') ||
+             nl.includes('walnuts') || nl.includes('pecans') || nl.includes('pistachios');
+    });
+    const bfStr  = breakfastDishes.length ? `Breakfast options from library: ${breakfastDishes.join(', ')}.` : '';
+    const luStr  = lunchDishes.length    ? `Lunch options from library: ${lunchDishes.join(', ')}.`    : '';
+    const diStr  = dinnerDishes.length   ? `Dinner options from library: ${dinnerDishes.join(', ')}.`   : '';
+    const snStr  = snackDishes.length    ? `Snack options from library: ${snackDishes.join(', ')}.`    : '';
+    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object, drawing primarily from the existing recipe library below.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\n\nEXISTING RECIPE LIBRARY — use these dishes as your primary source. Select appropriate recipes for each slot and carb cycle day. Rotate for variety across the week. Only introduce a brand-new dish if no library option suits a slot.\n${bfStr}\n${luStr}\n${diStr}\n${snStr}\n\nFor any dish chosen from the library, use its existing calorie and macro values. For any new dish introduced, generate a full recipe card.\nReturn ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
+  }
   if (si.mode === 'fullpackage')
-    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object.\n${DIET} Carb cycle: ${CYCLE_TGTS}. ${FAV_STR}\nReturn ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
+    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\nReturn ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
   if (si.mode === 'fillcards') {
     const names = (si.missing||[]).map(r=>r.name);
     return `Generate full recipe JSON for these ${names.length} program recipes. ${DIET} Return ONLY a JSON array (no markdown):\n${REC_FMT}\n\nRecipes needed:\n${names.join('\n')}`;
@@ -669,9 +748,9 @@ function HollNutrition() {
   const [notes,    setNotes]    = useState([]);
   const [nForm,    setNForm]    = useState({date:new Date().toISOString().slice(0,10),weight:'',month:9,notes:''});
   const [editingNoteId, setEditingNoteId] = useState(null);
-  const [water,    setWater]    = useState({});
   const [customT,  setCustomT]  = useState({});
   const [showHelp, setShowHelp] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const [showEditT,setShowEditT]= useState(false);
   const [editForm, setEditForm] = useState({});
   const [totalMon, setTotalMon] = useState(12);
@@ -699,6 +778,7 @@ function HollNutrition() {
     avoidList: [...DEFAULT_AVOID],
     alwaysItems: [],
     preferItems: [],
+    limitItems: [],    // max 2 per week
     prefInput: '',
     preferInput: '',
     avoidInput: '',
@@ -733,7 +813,6 @@ function HollNutrition() {
           setGroc(grocRaw);
         }
       }} catch(e){}
-      try { const r = LS.get('hn_water');   if(r) setWater(JSON.parse(r.value)); } catch(e){}
       try { const r = LS.get('hn_customt'); if(r) setCustomT(JSON.parse(r.value));} catch(e){}
       try { const r = LS.get('hn_totmon');  if(r) setTotalMon(+r.value);          } catch(e){}
       try { const r = LS.get('hn_mon');     if(r) setMon(+r.value);               } catch(e){}
@@ -831,7 +910,6 @@ function HollNutrition() {
   const savePlans  = async (p) => { setPlans(p);   try { LS.set('hn_plans',   JSON.stringify(p)); } catch(e){} };
   const saveNotes  = async (n) => { setNotes(n);   try { LS.set('hn_notes',   JSON.stringify(n)); } catch(e){} };
   const saveGroc   = async (g) => { setGroc(g);    try { LS.set('hn_groc',    JSON.stringify(g)); } catch(e){} };
-  const saveWater  = async (w) => { setWater(w);   try { LS.set('hn_water',   JSON.stringify(w)); } catch(e){} };
   const saveCustomT= async (t) => { setCustomT(t); try { LS.set('hn_customt', JSON.stringify(t)); } catch(e){} };
   const saveRecipes = (r) => {
     setSavedRecipes(r);
@@ -874,7 +952,6 @@ function HollNutrition() {
   const curDay  = plans[mon]?.[day-1];
   const curGroc = groc[mon];
   const today   = new Date().toISOString().slice(0,10);
-  const todayW  = water[today] || 0;
   const isProj  = (PROJECTED.has(mon) || mon > 12) && !customT[mon];
 
   // ── Generation ────────────────────────────────────────────────────────────────
@@ -1291,7 +1368,7 @@ function HollNutrition() {
 
     if (gcats.length===0) {
       doc.setTextColor(...GR); doc.setFontSize(10);
-      doc.text('No grocery data. Use Full Package from Claude to generate with your meal plan.',PM,y+20,{maxWidth:PW-PM*2});
+      doc.text('No grocery data. Use ✦ Build from Library or 🎲 Random Package from Claude to generate with your meal plan.',PM,y+20,{maxWidth:PW-PM*2});
     } else {
       // 4-column layout with footer-safe boundary
       var FOOTER_Y = PH - 16; // hard stop above footer
@@ -1640,7 +1717,12 @@ function HollNutrition() {
               border:'none',borderRadius:9,cursor:'pointer',fontWeight:600}}>
             💾 Backup
           </button>
-          <button onClick={() => { setShowHelp(!showHelp); }}
+          <button onClick={() => { setShowChangelog(!showChangelog); setShowHelp(false); }}
+            title="View version history and release notes"
+            style={{...S.btn('sage'),padding:'5px 13px',fontSize:12}}>
+            📋 Changelog {showChangelog?'▲':'▼'}
+          </button>
+          <button onClick={() => { setShowHelp(!showHelp); setShowChangelog(false); }}
             title="Show step-by-step instructions for using every feature of the app"
             style={{...S.btn('sage'),padding:'5px 13px',fontSize:12}}>
             ? Help {showHelp?'▲':'▼'}
@@ -1674,7 +1756,7 @@ function HollNutrition() {
                 ['1','Select your month','Click a month button in the MONTH strip. M1–M9 are past months — selecting one shows the 📊 History view with macro targets and trends, locked by default. M10+ are current/future — selecting one shows the 📋 Planner. M10–M12 show projected targets (◈) until you enter real ones.','#3b82f6'],
                 ['2','Set up Preferences first','Go to ⚙️ Preferences before generating any plans. Enter your height, age, activity level, and goal. The tool calculates your calorie target automatically from your latest logged weight. Add foods to Always Include or Prefer Often, review your Avoid list, and set your preferred Theme and Layout.','#8b5cf6'],
                 ['3','Enter real targets for M10+','When your nutritionist provides updated targets, go to the Planner for that month and click + Enter Real Targets in the ◈ banner. Days 4/5/6 auto-mirror Days 1/2/3. The ◈ indicator disappears once saved.','#6366f1'],
-                ['4','Generate a full week','In the Planner, click ✦ Full Package from Claude. Copy the prompt, paste it into claude.ai, copy the JSON response, paste it back, and click ✓ Import. This saves the week plan, grocery list, and recipes all at once.','#10b981'],
+                ['4','Generate a new month plan','In the Planner, click ✦ Build from Library to generate a plan using your existing 12-month recipe library — this is the preferred flow. Or use 🎲 Random Package from Claude to have Claude invent new dishes freely. Copy the prompt, paste into claude.ai, paste the JSON back, and click ✓ Import.','#10b981'],
                 ['5','Download your PDF','After importing, click ⬇ Download PDF in the Planner to generate the full package: Weekly Overview, Grocery List, Daily Breakouts, and Recipe pages. The Weekly Overview shows dish names as single checkboxes for easy tracking.','#f59e0b'],
                 ['6','Review your grocery list','The Grocery List appears at the bottom of the Planner tab. Check items off as you shop. It also prints on Page 2 of the PDF.','#ec4899'],
                 ['7','Import parts separately','Use 📋 Reimport Week Plan or 📋 Reimport Recipes in the Planner to update just one section. Use 📋 Regenerate Day N to replace a single day. Use 📋 Import Grocery List to update the grocery list independently.','#f97316'],
@@ -1683,7 +1765,6 @@ function HollNutrition() {
                 ['10','Back up and sync','Click 💾 Backup in the header to download all your data as a HollHealth-backup-[date].json file. To sync between devices, import that file on the other device via the same Backup panel.','#0891b2'],
                 ['11','Log your weekly weight','Go to 📓 Progress. Enter date and weight and click + Save Entry. Use ✏️ Edit on any entry to correct a typo. Entries power the automatic calorie calculation in Preferences and the weight trend chart.','#1b3d2a'],
                 ['12','Track health appointments','Go to 🏥 Health. Log your last visit date for each appointment type and click 📅 Remind Me to download a .ics calendar reminder for Outlook or Google Calendar. The summary strip shows overdue and upcoming items at a glance.','#dc2626'],
-                ['13','Stay hydrated','Tap the 💧 water bottle circles in Planner or Progress to track your daily goal of 5 bottles. Resets each calendar day.','#5a8e6a'],
               ].map(([n,title,desc,color]) => (
                 <div key={n} style={{padding:'12px 14px',background:'#faf8f4',borderRadius:11,borderLeft:`4px solid ${color}`}}>
                   <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
@@ -1707,6 +1788,63 @@ function HollNutrition() {
               <div style={{padding:'9px 14px',background:'#fef9ec',borderRadius:8,fontSize:12,color:'#92400e'}}>
                 <strong>App name:</strong> This app is Holl:Health v{APP_VERSION}. Backup files are saved as HollHealth-backup-[date].json. Data keys are preserved across renames.
               </div>
+            </div>
+
+            {/* Process flow quick-reference */}
+            <div style={{marginTop:16,padding:'14px 18px',background:DK?'#0d1f15':'#edf7f0',borderRadius:12,border:'1.5px solid #b6d9be'}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:700,marginBottom:12,color:DK?'#a3c4a8':'#1b3d2a'}}>🔄 Main Process Flows</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                {[
+                  ['🆕 Generate a new month plan',
+                   '1. Set up ⚙️ Preferences (height, age, goal, avoid/limit lists)\n2. In 📋 Planner, select the new month\n3. Click ✦ Build from Library (preferred) or 🎲 Random Package from Claude\n4. Copy the prompt → paste into claude.ai\n5. Copy the JSON response → paste back → ✓ Import\n6. Review the week, swap any items, then 🔒 Lock Month'],
+                  ['🔄 Swap a meal item',
+                   '1. In 📋 Planner, find the item and click ↔ Swap\n2. Use 📖 Swap Bible tabs for quick alternatives\n3. Or use ✨ AI Suggestions: copy prompt → claude.ai → paste JSON → ✓ Use\n4. Click a card to apply the swap (mirrors to Day +3 automatically)'],
+                  ['💾 Backup & restore data',
+                   '1. Click 💾 Backup in the header\n2. ⬇ Download Backup saves everything (plans, recipes, settings)\n3. To restore: 💾 Backup → import the .json file\n4. Back up after every new month plan or major change'],
+                  ['📖 Add or view a recipe card',
+                   '1. Go to 🍽️ Recipes tab\n2. Click any card tile to view ingredients and steps\n3. Missing a card? Use the Backup panel → import the 12-month backup JSON\n4. New recipes from ✦ Build from Library or 🎲 Random Package imports auto-populate the library\n5. Add your own recipes via 📖 Recipes → Add Recipes to Library'],
+                ].map(([title, steps]) => (
+                  <div key={title} style={{padding:'10px 14px',background:DK?'#112218':'#fff',borderRadius:9,border:'1px solid #d4ead9'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:DK?'#a3c4a8':'#1b3d2a',marginBottom:6}}>{title}</div>
+                    {steps.split('\n').map((s,i) => <div key={i} style={{fontSize:11,color:DK?'#8aa88e':'#444',lineHeight:1.7}}>{s}</div>)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Changelog */}
+      {showChangelog && (
+        <div style={{background:DK?'#1e2820':'white',borderBottom:`2px solid ${DK?'#3a4a3c':'#e8e2d8'}`,padding:'20px 24px',boxShadow:'0 4px 16px rgba(0,0,0,0.08)'}}>
+          <div style={{maxWidth:860,margin:'0 auto'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:700,color:DK?'#a3c4a8':'#1b3d2a'}}>📋 Version History</div>
+              <button onClick={() => setShowChangelog(false)} style={{background:'none',border:'none',fontSize:20,color:'#bbb',cursor:'pointer'}}>×</button>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {APP_CHANGELOG.map((entry, i) => (
+                <div key={entry.version} style={{
+                  display:'flex',gap:14,padding:'11px 16px',
+                  background: i===0 ? (DK?'#0d2e1a':'#edf7f0') : (DK?'#141f17':'#faf8f4'),
+                  borderRadius:10,
+                  borderLeft: i===0 ? '4px solid #10b981' : `4px solid ${DK?'#3a4a3c':'#e0ddd6'}`
+                }}>
+                  <div style={{flexShrink:0,minWidth:60}}>
+                    <div style={{fontWeight:800,fontSize:13,color: i===0 ? '#10b981' : (DK?'#7a9a7e':'#5a6a5e'),fontFamily:'monospace'}}>
+                      v{entry.version}
+                    </div>
+                    {i===0 && <div style={{fontSize:10,fontWeight:700,color:'#10b981',marginTop:2}}>CURRENT</div>}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,color:DK?'#c8d8ca':'#333',lineHeight:1.6}}>{entry.notes}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginTop:12,padding:'9px 14px',background:DK?'#0d1f15':'#f3effd',borderRadius:8,fontSize:11,color:DK?'#9a8ac8':'#5a3e9a'}}>
+              <strong>For developers:</strong> APP_CHANGELOG is defined as a constant in the app source. Add a new entry at the top of the array with each release. Also update the version history table in HollHealth-handoff.md.
             </div>
           </div>
         </div>
@@ -1749,7 +1887,26 @@ function HollNutrition() {
 
       <main style={{...S.main, background:DK?'#1a1f1c':'#f1ede5'}} id="hh-root">
 
-        {/* ══ HISTORY ══ */}
+        {/* ── Backup reminder banner ── */}
+        {(() => {
+          const lastStr = LS.get('hn_last_backup')?.value;
+          const daysSince = lastStr
+            ? Math.floor((Date.now() - new Date(lastStr).getTime()) / 86400000)
+            : 999;
+          if (daysSince < 7) return null;
+          const msg = lastStr
+            ? `Last backup was ${daysSince} day${daysSince!==1?'s':''} ago.`
+            : 'You have not downloaded a backup yet.';
+          return (
+            <div style={{margin:'0 0 12px 0',padding:'10px 16px',background:DK?'#2d2000':'#fff8e7',border:'1.5px solid #fde68a',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+              <span style={{fontSize:12,color:DK?'#fbbf24':'#92400e',fontWeight:600}}>💾 {msg} Download a backup to avoid data loss.</span>
+              <button style={{...S.btn('out'),fontSize:11,padding:'5px 12px',borderColor:'#f59e0b',color:'#92400e',whiteSpace:'nowrap'}}
+                onClick={() => setShowData('backup')}>
+                Open Backup
+              </button>
+            </div>
+          );
+        })()}
         {tab==='planner' && mon <= 9 && (
           <div className="fi">
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4,flexWrap:'wrap',gap:10}}>
@@ -1852,32 +2009,6 @@ function HollNutrition() {
         {tab==='planner' && mon >= 10 && (
           <>
           <div className="fi">
-            {/* Water tracker */}
-            <div style={{...S.card,padding:'12px 18px',marginBottom:14,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10,background:'linear-gradient(135deg,#ecfeff,#f0f9ff)',border:'1.5px solid #a5f3fc'}}>
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <span style={{fontSize:22}}>💧</span>
-                <div>
-                  <div style={{fontWeight:700,fontSize:13,color:'#0e7490'}}>Today's Water</div>
-                  <div style={{fontSize:11,color:'#7a7a6a'}}>Goal: 5 bottles (~16 oz / 500ml each)</div>
-                </div>
-              </div>
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
-                {Array.from({length:5},(_,i) => (
-                  <button key={i} onClick={() => { const w={...water,[today]:Math.min(5,i<todayW?i:i+1)}; saveWater(w); }}
-                    style={{width:36,height:36,borderRadius:'50%',border:'none',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',background:i<todayW?'#0891b2':'#e0f2fe',transition:'all 0.2s'}}>
-                    {i<todayW?'💧':'○'}
-                  </button>
-                ))}
-                <div style={{marginLeft:8,textAlign:'center'}}>
-                  <div style={{fontSize:20,fontWeight:800,color:'#0e7490',lineHeight:1}}>{todayW}/5</div>
-                  <div style={{fontSize:10,color:todayW===5?'#0e7490':'#7a7a6a',fontWeight:todayW===5?700:400}}>
-                    {todayW===5?'✓ Goal!':todayW===0?'Not started':`${5-todayW} to go`}
-                  </div>
-                </div>
-                {todayW>0 && <button onClick={() => saveWater({...water,[today]:0})} style={{background:'none',border:'none',color:'#bbb',fontSize:14}}>↺</button>}
-              </div>
-            </div>
-
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14,flexWrap:'wrap',gap:10}}>
               <div>
                 <h1 style={S.h1}>Month {mon} — AI Planner</h1>
@@ -1885,10 +2016,15 @@ function HollNutrition() {
               </div>
               <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
 
-                <button style={{...S.btn('sage'),padding:'8px 16px',fontSize:13}}
-                  title="Generate a complete month package: 7-day meal plan, grocery list, and all recipes — all imported in one step"
+                <button style={{...S.btn('sage'),padding:'8px 16px',fontSize:13,fontWeight:700}}
+                  title="Build a new month plan by selecting dishes from your existing 12-month recipe library. Only introduces new recipes when no library option fits a slot."
+                  onClick={() => setShowImport({mode:'libpackage', mon, library:recipeLibrary})}>
+                  ✦ Build from Library
+                </button>
+                <button style={{...S.btn('out'),padding:'8px 14px',fontSize:12}}
+                  title="Generate a completely new month plan from scratch — Claude invents new dishes freely without drawing from your existing library"
                   onClick={() => setShowImport({mode:'fullpackage', mon})}>
-                  ✦ Full Package from Claude
+                  🎲 Random Package from Claude
                 </button>
                 <button style={{...S.btn('sage'),padding:'8px 14px',fontSize:12}}
                   title="Regenerate just the 7-day meal plan without changing your grocery list or recipes"
@@ -2385,7 +2521,7 @@ function HollNutrition() {
               {!plans[mon] ? (
                 <div style={{...S.card,textAlign:'center',padding:32,color:'#7a7a6a',fontSize:13}}>
                   <div style={{fontSize:36,marginBottom:10}}>🛒</div>
-                  Generate meals first using ✦ Full Package from Claude, then import the grocery list.
+                  Generate meals first using ✦ Build from Library or 🎲 Random Package from Claude, then import the grocery list.
                 </div>
               ) : !curGroc ? (
                 <div style={{...S.card,textAlign:'center',padding:32,color:'#7a7a6a',fontSize:13}}>
@@ -2528,30 +2664,6 @@ function HollNutrition() {
           <div className="fi">
             <h1 style={S.h1}>Progress Tracker</h1>
             <p style={S.sub}>Log your weight weekly along with any notes.</p>
-
-            {/* Water */}
-            <div style={{...S.card,padding:'12px 18px',marginBottom:14,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10,background:'linear-gradient(135deg,#ecfeff,#f0f9ff)',border:'1.5px solid #a5f3fc'}}>
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <span style={{fontSize:22}}>💧</span>
-                <div>
-                  <div style={{fontWeight:700,fontSize:13,color:'#0e7490'}}>Today's Water</div>
-                  <div style={{fontSize:11,color:'#7a7a6a'}}>Goal: 5 bottles (~16 oz / 500ml each)</div>
-                </div>
-              </div>
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
-                {Array.from({length:5},(_,i) => (
-                  <button key={i} onClick={() => { const w={...water,[today]:Math.min(5,i<todayW?i:i+1)}; saveWater(w); }}
-                    style={{width:36,height:36,borderRadius:'50%',border:'none',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',background:i<todayW?'#0891b2':'#e0f2fe',transition:'all 0.2s'}}>
-                    {i<todayW?'💧':'○'}
-                  </button>
-                ))}
-                <div style={{marginLeft:8,textAlign:'center'}}>
-                  <div style={{fontSize:20,fontWeight:800,color:'#0e7490',lineHeight:1}}>{todayW}/5</div>
-                  <div style={{fontSize:10,color:todayW===5?'#0e7490':'#7a7a6a',fontWeight:todayW===5?700:400}}>{todayW===5?'✓ Goal!':todayW===0?'Not started':`${5-todayW} to go`}</div>
-                </div>
-                {todayW>0 && <button onClick={() => saveWater({...water,[today]:0})} style={{background:'none',border:'none',color:'#bbb',fontSize:14}}>↺</button>}
-              </div>
-            </div>
 
             {/* Log form */}
             <div style={{...S.card,border:editingNoteId?'2px solid #5a8e6a':'none'}}>
@@ -2814,6 +2926,38 @@ function HollNutrition() {
                     </span>
                   ))}
                 </div>
+              </div>
+
+              {/* ── Limit Per Week ── */}
+              <div style={S.card}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:4}}>⚠️ Limit Per Week</div>
+                <div style={{fontSize:12,color:'#7a7a6a',marginBottom:14,lineHeight:1.6}}>
+                  Foods and ingredients you enjoy but don't want overused. Claude will include each of these <strong>no more than twice</strong> across all meals in a generated week plan.
+                  <span style={{display:'block',marginTop:6,padding:'6px 10px',background:'#fff8e7',borderRadius:7,color:'#92400e',fontSize:11,fontWeight:600}}>
+                    💡 Good for: cauliflower, lentils, sweet potato, chickpeas, tofu — ingredients that taste great but get repetitive at 5–6 meals per week.
+                  </span>
+                </div>
+                <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+                  <input style={{...S.inp,flex:1,minWidth:200}}
+                    placeholder="e.g. cauliflower, lentils, chickpeas, sweet potato…"
+                    value={prefs.limitInput||''}
+                    onChange={e=>setPrefs(p=>({...p,limitInput:e.target.value}))}
+                    onKeyDown={e=>{ if(e.key==='Enter') addToList('limitItems','limitInput'); }}/>
+                  <button style={{...S.btn('out'),padding:'8px 16px',borderColor:'#f59e0b',color:'#92400e'}}
+                    onClick={()=>addToList('limitItems','limitInput')}>+ Add</button>
+                </div>
+                {(prefs.limitItems||[]).length === 0 ? (
+                  <div style={{fontSize:12,color:'#bbb',fontStyle:'italic'}}>No limits set — add ingredients you want capped at 2× per week.</div>
+                ) : (
+                  <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                    {(prefs.limitItems||[]).map((item,i) => (
+                      <span key={i} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'5px 12px',background:'#fff8e7',border:'1.5px solid #fde68a',borderRadius:20,fontSize:12,fontWeight:600,color:'#92400e'}}>
+                        ⚠️ {item} <span style={{fontSize:10,fontWeight:400,color:'#b45309'}}>max 2×</span>
+                        <button onClick={()=>removeFromList('limitItems',item)} style={{background:'none',border:'none',color:'#bbb',fontSize:14,lineHeight:1,padding:0,cursor:'pointer'}}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* ── Display Settings ── */}
@@ -3127,7 +3271,8 @@ function HollNutrition() {
                      showImport.mode==='day'  ? `Import Day ${showImport.day}` :
                      showImport.mode==='grocery' ? 'Import Grocery List' :
                      showImport.mode==='recipe'  ? `Import Recipe: ${showImport.name}` :
-                     showImport.mode==='fullpackage' ? `Full Package — Month ${showImport.mon}` :
+                     showImport.mode==='libpackage' ? `Build from Library — Month ${showImport.mon}` :
+                     showImport.mode==='fullpackage' ? `Random Package — Month ${showImport.mon}` :
                      showImport.mode==='recipesonly'   ? `Import Recipes — Month ${showImport.mon}` :
                      showImport.mode==='bulkrecipes'   ? 'Add Recipes to Library' :
                      showImport.mode==='fillcards'     ? `Fill ${showImport.missing?.length||0} Missing Recipe Cards` :
@@ -3138,6 +3283,10 @@ function HollNutrition() {
                       ? 'Add recipes to your existing plan without changing any meals or grocery data. Use this after switching to a new HTML file.'
                       : showImport.mode==='replacedish'
                       ? `Replacing "${showImport.replacing}" with a new ${showImport.slot} dish matching the same macros.`
+                      : showImport.mode==='libpackage'
+                      ? `Builds Month ${showImport.mon} by selecting dishes from your ${Object.keys(showImport.library||{}).length}-recipe library. Copy the prompt, paste into claude.ai, paste the JSON back below.`
+                      : showImport.mode==='fullpackage'
+                      ? `Generates Month ${showImport.mon} from scratch — Claude invents new dishes freely. For a library-based plan use ✦ Build from Library instead.`
                       : 'Ask Claude to generate this in Claude.ai, then paste the JSON response below.'}
                   </div>
                 </div>
@@ -3277,13 +3426,18 @@ function HollNutrition() {
                         setShowImport(null); setImportText('');
                         setErr(null);
                       })();
-                    } else if (showImport.mode==='fullpackage') {
+                    } else if (showImport.mode==='fullpackage' || showImport.mode==='libpackage') {
                       if (lockedMonths[showImport.mon]) throw new Error('Month ' + showImport.mon + ' is locked. Click the Lock Month button in the Planner to unlock it before importing a new plan.');
                       if (!data.plan || !Array.isArray(data.plan)) throw new Error('Expected JSON with a "plan" array of 7 days');
                       if (!data.grocery?.categories) throw new Error('Expected JSON with a "grocery" object');
                       if (!data.recipes || !Array.isArray(data.recipes)) throw new Error('Expected JSON with a "recipes" array');
                       (async () => {
                         const wk = data.plan.map((d,i) => ({...d, dayNumber:i+1}));
+                        // Enforce VShred mirror rule: D4=D1, D5=D2, D6=D3, D7 stays unique
+                        const mirror = (src, dst) => {
+                          if (wk[src-1]) wk[dst-1] = JSON.parse(JSON.stringify({...wk[src-1], dayNumber:dst}));
+                        };
+                        mirror(1,4); mirror(2,5); mirror(3,6);
                         const filledGroc = gapFillGrocery(data.grocery, wk);
                         await savePlans({...plans, [showImport.mon]: wk});
                         await saveGroc({...groc, [showImport.mon]: filledGroc});
@@ -3406,9 +3560,10 @@ function HollNutrition() {
                     onClick={() => {
                     const data = {
                       plans: plans, notes: notes, groc: groc,
-                      water: water, customT: customT, totalMon: totalMon,
+                      customT: customT, totalMon: totalMon,
                       recipe_library: recipeLibrary,
                       locked: JSON.parse(LS.get('hn_locked')?.value || '{}'),
+                      prefs: prefs,
                       mon: mon,
                       exportDate: new Date().toISOString(),
                     };
@@ -3418,6 +3573,7 @@ function HollNutrition() {
                     a.href = url; a.download = `HollHealth-backup-${new Date().toISOString().slice(0,10)}.json`;
                     document.body.appendChild(a); a.click(); document.body.removeChild(a);
                     URL.revokeObjectURL(url);
+                    LS.set('hn_last_backup', new Date().toISOString().slice(0,10));
                   }}>⬇ Download Backup</button>
                 </div>
                 <div style={{padding:'18px',background:'#eff6ff',borderRadius:12,border:'1px solid #bfdbfe'}}>
@@ -3437,7 +3593,6 @@ function HollNutrition() {
                           const plans_  = d.plans   || (d.hn_plans   ? JSON.parse(d.hn_plans)   : null);
                           const notes_  = d.notes   || (d.hn_notes   ? JSON.parse(d.hn_notes)   : null);
                           const groc_   = d.groc    || (d.hn_groc    ? JSON.parse(d.hn_groc)    : null);
-                          const water_  = d.water   || (d.hn_water   ? JSON.parse(d.hn_water)   : null);
                           const customT_= d.customT || (d.hn_customt ? JSON.parse(d.hn_customt) : null);
                           const locked_ = d.locked  || (d.hn_locked  ? JSON.parse(d.hn_locked)  : null);
                           const reclib_ = d.recipe_library || (d.hn_recipe_library ? JSON.parse(d.hn_recipe_library) : null);
@@ -3446,16 +3601,18 @@ function HollNutrition() {
                           if (plans_)   savePlans(plans_);
                           if (notes_)   saveNotes(notes_);
                           if (groc_)    saveGroc(groc_);
-                          if (water_)   saveWater(water_);
                           if (customT_) saveCustomT(customT_);
                           if (locked_) { LS.set('hn_locked', JSON.stringify(locked_)); }
                           if (reclib_) { saveRecipeLibrary(reclib_); }
                           if (mon_)    { setMon(mon_); LS.set('hn_mon', String(mon_)); }
                           if (total_)  { setTotalMon(total_); LS.set('hn_totmon', String(total_)); }
+                          const prefs_ = d.prefs || null;
+                          if (prefs_)  { savePrefs(prefs_); }
                           const counts = [
                             plans_  ? `${Object.keys(plans_).length} months of plans` : '',
                             reclib_ ? `${Object.keys(reclib_).length} recipe cards` : '',
                             locked_ ? `${Object.keys(locked_).filter(k=>locked_[k]).length} locked months` : '',
+                            prefs_  ? 'preferences (avoid list, limits, goals)' : '',
                           ].filter(Boolean).join(', ');
                           alert('Import successful!' + (counts ? '\n\n' + counts : '') + '\n\nThe page will reload to apply all changes.');
                           window.location.reload();
