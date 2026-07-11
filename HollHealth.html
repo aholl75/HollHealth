@@ -204,9 +204,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.38';
+const APP_VERSION = '1.5.39';
 const APP_CHANGELOG = [
-  { version: '1.5.38', date: '2026-07-10', notes: 'Added Goal Weight and Program Start Date fields to Preferences. seedFromPrior() now uses goal-weight gap for graduated deficit: >5 lbs = full −250 cal, 1–5 lbs = half −125 cal, at/below goal = maintenance. monDateRange() helper computes Mon–Sun date ranges for each 28-day cycle from program start. Month strip buttons show date range on hover; Preferences shows current/next cycle dates and goal weight gap indicator. Plan Target card description updated to reflect goal-weight-aware deficit.' },
+  { version: '1.5.39', date: '2026-07-10', notes: 'libpackage prompt overhaul: (1) pre-filters recipe library against avoid list before building prompt — 63 cards excluded in typical config; (2) injects full ingredient lists per recipe into prompt as "dish — ing1, ing2, ..."; (3) annotates limit-per-week dishes with [LIMIT] flag; (4) explicit 2-3 item snacks requirement in prompt; (5) post-generation validation on import catches avoid-list hits, snack multiplicity < 2, and limit-per-week violations — shows confirm dialog with issue list before importing.' },
+  { version: '1.5.38', date: '2026-07-10', notes: 'Added Goal Weight and Program Start Date fields to Preferences. seedFromPrior() now uses goal-weight gap for graduated deficit: >5 lbs = −250 cal, 1–5 lbs = −125 cal, at/below goal = maintenance. monDateRange() helper computes Mon–Sun date ranges for 28-day cycles. Month strip tooltips show date ranges; Preferences shows cycle dates and goal gap indicator.' },
   { version: '1.5.37', date: '2026-07-10', notes: 'M13+ macro seeding now weight- and goal-aware. seedFromPrior() helper scales prior month calories and p/f/c proportionally to calcTargetCals result (Mifflin-St Jeor + goal adjustment). Day-type variance preserved (low/mod/high). Falls back to prior month as-is if no weight logged, with prompt to log weight. Banner shows current weight and calorie target when scaling is active.' },
   { version: '1.5.36', date: '2026-07-10', notes: 'M13+ macro targets now seeded from prior month instead of falling back to M9. mData derivation, edit form seeding, and save handler fallback all updated. Banner subtitle and month strip indicator updated.' },
   { version: '1.5.35', date: '2026-07-10', notes: 'Added ✦ Build from Library button (library-driven plan generation from existing recipe cards); renamed old Full Package to 🎲 Random Package from Claude; new libpackage prompt mode injects recipe library organized by slot; libpackage shares fullpackage import handler; all help text, process flows, and modal descriptions updated. APP_CHANGELOG constant added; 📋 Changelog panel added to header.' },
@@ -631,41 +632,96 @@ const buildPrompt = (si, plans, prefs, notes) => {
     return `Build a grocery list from these specific ingredients: ${names.join(', ')}. Consolidate duplicates, organize by store section. Return ONLY JSON: {"categories":[{"name":"S","items":["S"]}]}`;
   }
   if (si.mode === 'libpackage') {
-    // Build dish lists from the recipe library, grouped by likely slot
     const lib = si.library || {};
-    const libNames = Object.values(lib).map(r => r.name).filter(Boolean);
-    const breakfastDishes = libNames.filter(n => {
+    const avoidSet = new Set(avoidItems.map(a => a.toLowerCase().trim()));
+    const limitSet = new Set(limit.map(l => l.toLowerCase().trim()));
+
+    // ── Helper: extract ingredient names from a card ──────────────────────────
+    const cardIngNames = (card) => {
+      const ings = card.ingredients || [];
+      return ings.map(i => (typeof i === 'string' ? i : (i.item || '')).toLowerCase().trim());
+    };
+
+    // ── Helper: check if card is avoid-clean ─────────────────────────────────
+    const isClean = (card) => {
+      const ings = cardIngNames(card);
+      // Also include the card name itself for single-ingredient items like "Grapefruit"
+      const all = [...ings, card.name.toLowerCase()];
+      return !avoidItems.some(a => all.some(ing => ing.includes(a.toLowerCase())));
+    };
+
+    // ── Pre-filter library: exclude any card with avoid-list ingredients ──────
+    const cleanLib = Object.values(lib).filter(isClean);
+
+    // ── Helper: build ingredient annotation string for prompt ─────────────────
+    const ingStr = (card) => {
+      const ings = cardIngNames(card);
+      return ings.length ? ` — ${ings.join(', ')}` : '';
+    };
+
+    // ── Helper: check if card is limit-flagged (count how many limit items appear) ──
+    const limitHits = (card) => {
+      const ings = [...cardIngNames(card), card.name.toLowerCase()];
+      return limit.filter(l => ings.some(ing => ing.includes(l.toLowerCase())));
+    };
+
+    // ── Slot classification ───────────────────────────────────────────────────
+    const isBreakfast = (n) => {
       const nl = n.toLowerCase();
-      return nl.includes('oatmeal') || nl.includes('smoothie') || nl.includes('omelet') || nl.includes('toast') ||
-             nl.includes('waffle') || nl.includes('cereal') || nl.includes('sausage') || nl.includes('egg') ||
-             nl.includes('granola') || nl.includes('skillet') || nl.includes('bagel') || nl.includes('pancake') || nl.includes('pudding');
-    });
-    const lunchDishes = libNames.filter(n => {
+      return nl.includes('oatmeal') || nl.includes('smoothie') || nl.includes('omelet') ||
+             nl.includes('toast') || nl.includes('waffle') || nl.includes('cereal') ||
+             nl.includes('sausage') || nl.includes('egg') || nl.includes('granola') ||
+             nl.includes('skillet') || nl.includes('bagel') || nl.includes('pancake') ||
+             nl.includes('pudding') || nl.includes('porridge') || nl.includes('frittata');
+    };
+    const isLunch = (n) => {
       const nl = n.toLowerCase();
-      return nl.includes('salad') || nl.includes('wrap') || nl.includes('sandwich') || nl.includes('soup') ||
-             nl.includes('bowl') || nl.includes('hummus') || nl.includes('pasta') || nl.includes('stir fry') ||
+      return nl.includes('salad') || nl.includes('wrap') || nl.includes('sandwich') ||
+             nl.includes('soup') || nl.includes('bowl') || nl.includes('hummus') ||
              nl.includes('chickpea') || nl.includes('lentil') || nl.includes('risotto');
-    });
-    const dinnerDishes = libNames.filter(n => {
+    };
+    const isDinner = (n) => {
       const nl = n.toLowerCase();
-      return nl.includes('bowl') || nl.includes('stew') || nl.includes('soup') || nl.includes('tacos') ||
-             nl.includes('pasta') || nl.includes('enchilada') || nl.includes('curry') || nl.includes('dal') ||
-             nl.includes('korma') || nl.includes('tikka') || nl.includes('casserole') || nl.includes('stir fry') ||
-             nl.includes('wings') || nl.includes('zoodles') || nl.includes('burrito') || nl.includes('meatball') ||
-             nl.includes('risotto') || nl.includes('frittata') || nl.includes('potatoes') || nl.includes('mash');
-    });
-    const snackDishes = libNames.filter(n => {
+      return nl.includes('bowl') || nl.includes('stew') || nl.includes('soup') ||
+             nl.includes('tacos') || nl.includes('pasta') || nl.includes('enchilada') ||
+             nl.includes('curry') || nl.includes('dal') || nl.includes('casserole') ||
+             nl.includes('stir fry') || nl.includes('wings') || nl.includes('zoodles') ||
+             nl.includes('burrito') || nl.includes('meatball') || nl.includes('risotto') ||
+             nl.includes('mash') || nl.includes('potatoes') || nl.includes('frittata') ||
+             nl.includes('sisters') || nl.includes('skillet');
+    };
+    const isSnack = (n) => {
       const nl = n.toLowerCase();
-      return nl.includes('peanut butter') || nl.includes('nuts') || nl.includes('seeds') || nl.includes('crackers') ||
-             nl.includes('popcorn') || nl.includes('fruit') || nl.includes('apple') || nl.includes('celery') ||
-             nl.includes('granola bar') || nl.includes('cheese') || nl.includes('pretzels') || nl.includes('straws') ||
-             nl.includes('walnuts') || nl.includes('pecans') || nl.includes('pistachios');
-    });
-    const bfStr  = breakfastDishes.length ? `Breakfast options from library: ${breakfastDishes.join(', ')}.` : '';
-    const luStr  = lunchDishes.length    ? `Lunch options from library: ${lunchDishes.join(', ')}.`    : '';
-    const diStr  = dinnerDishes.length   ? `Dinner options from library: ${dinnerDishes.join(', ')}.`   : '';
-    const snStr  = snackDishes.length    ? `Snack options from library: ${snackDishes.join(', ')}.`    : '';
-    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object, drawing primarily from the existing recipe library below.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\n\nEXISTING RECIPE LIBRARY — use these dishes as your primary source. Select appropriate recipes for each slot and carb cycle day. Rotate for variety across the week. Only introduce a brand-new dish if no library option suits a slot.\n${bfStr}\n${luStr}\n${diStr}\n${snStr}\n\nFor any dish chosen from the library, use its existing calorie and macro values. For any new dish introduced, generate a full recipe card.\nReturn ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
+      return nl.includes('nuts') || nl.includes('seeds') || nl.includes('crackers') ||
+             nl.includes('popcorn') || nl.includes('apple') || nl.includes('celery') ||
+             nl.includes('granola bar') || nl.includes('pretzels') || nl.includes('pear') ||
+             nl.includes('orange') || nl.includes('berries') || nl.includes('melon') ||
+             nl.includes('banana') || nl.includes('walnuts') || nl.includes('almonds') ||
+             nl.includes('cashews') || nl.includes('peanuts') || nl.includes('raisins') ||
+             nl.includes('protein bar') || nl.includes('rice cake') || nl.includes('fruit') ||
+             nl.includes('pumpkin seeds') || nl.includes('sunflower') || nl.includes('bar');
+    };
+
+    // ── Build slot lists with ingredient annotations ──────────────────────────
+    const fmt = (card) => {
+      const lh = limitHits(card);
+      const lFlag = lh.length ? ` [LIMIT: max 2×/week — ${lh.join(', ')}]` : '';
+      return `${card.name}${ingStr(card)}${lFlag}`;
+    };
+
+    const bfCards  = cleanLib.filter(c => isBreakfast(c.name));
+    const luCards  = cleanLib.filter(c => !isBreakfast(c.name) && isLunch(c.name));
+    const diCards  = cleanLib.filter(c => isDinner(c.name) && !isBreakfast(c.name));
+    const snCards  = cleanLib.filter(c => isSnack(c.name));
+
+    const bfStr = bfCards.length ? `BREAKFAST OPTIONS (${bfCards.length}):\n${bfCards.map(fmt).join('\n')}` : '';
+    const luStr = luCards.length ? `\nLUNCH OPTIONS (${luCards.length}):\n${luCards.map(fmt).join('\n')}` : '';
+    const diStr = diCards.length ? `\nDINNER OPTIONS (${diCards.length}):\n${diCards.map(fmt).join('\n')}` : '';
+    const snStr = snCards.length ? `\nSNACK OPTIONS (${snCards.length} — use 2-3 per day, each as a separate item):\n${snCards.map(fmt).join('\n')}` : '';
+
+    const snackRule = `SNACKS REQUIREMENT: Every day's Snacks slot must contain exactly 2-3 SEPARATE items (not one combined item). Each item must come from the Snack Options list above or be a simple whole food. List each snack item individually with its own name, calories, and macros — never combine them into a single entry.`;
+
+    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object, drawing primarily from the existing recipe library below.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\n\n${snackRule}\n\nAVOID LIST — do not use these ingredients in ANY recipe, including library dishes. If a dish's ingredients include any avoid-list item, skip it and choose another: ${avoidItems.join(', ')}.\n\nEXISTING RECIPE LIBRARY — pre-filtered to exclude avoid-list ingredients. Each entry shows: dish name — ingredients. Use dishes from this list as your primary source. For any new dish you introduce, ensure it contains no avoid-list ingredients and generate a full recipe card.\n${bfStr}${luStr}${diStr}${snStr}\n\nFor any dish chosen from the library, use its existing calorie and macro values. Return ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
   }
   if (si.mode === 'fullpackage')
     return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\nReturn ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
@@ -3573,6 +3629,60 @@ function HollNutrition() {
                       if (!data.plan || !Array.isArray(data.plan)) throw new Error('Expected JSON with a "plan" array of 7 days');
                       if (!data.grocery?.categories) throw new Error('Expected JSON with a "grocery" object');
                       if (!data.recipes || !Array.isArray(data.recipes)) throw new Error('Expected JSON with a "recipes" array');
+
+                      // ── Post-generation validation (libpackage only) ──────────────────
+                      if (showImport.mode === 'libpackage') {
+                        const avoidSet = new Set((prefs.avoidList||[]).map(a => a.toLowerCase().trim()));
+                        const limitItems2 = (prefs.limitItems||[]).map(l => l.toLowerCase().trim());
+                        const warnings = [];
+
+                        // Check snacks multiplicity
+                        data.plan.forEach((day, di) => {
+                          const snackSlot = (day.meals||[]).find(m => m.slot === 'Snacks');
+                          if (snackSlot && (snackSlot.items||[]).length < 2) {
+                            warnings.push(`Day ${di+1} Snacks has only ${(snackSlot.items||[]).length} item — should be 2-3 separate items`);
+                          }
+                        });
+
+                        // Check avoid-list hits in item names
+                        data.plan.forEach((day, di) => {
+                          (day.meals||[]).forEach(meal => {
+                            (meal.items||[]).forEach(item => {
+                              const nameLow = (item.name||'').toLowerCase();
+                              for (const a of avoidSet) {
+                                if (nameLow.includes(a)) {
+                                  warnings.push(`Day ${di+1} ${meal.slot}: "${item.name}" may contain avoided ingredient (${a})`);
+                                  break;
+                                }
+                              }
+                            });
+                          });
+                        });
+
+                        // Check limit-per-week caps
+                        limitItems2.forEach(limitItem => {
+                          let count = 0;
+                          data.plan.forEach(day => {
+                            (day.meals||[]).forEach(meal => {
+                              (meal.items||[]).forEach(item => {
+                                if ((item.name||'').toLowerCase().includes(limitItem)) count++;
+                              });
+                            });
+                          });
+                          if (count > 2) warnings.push(`"${limitItem}" appears ${count} times this week — limit is 2`);
+                        });
+
+                        if (warnings.length > 0) {
+                          const proceed = window.confirm(
+                            `⚠️ Validation found ${warnings.length} issue(s) in the generated plan:\n\n` +
+                            warnings.slice(0,8).join('\n') +
+                            (warnings.length > 8 ? `\n...and ${warnings.length - 8} more` : '') +
+                            `\n\nImport anyway? (You can edit individual days after importing)`
+                          );
+                          if (!proceed) { setImportText(''); return; }
+                        }
+                      }
+
                       (async () => {
                         const wk = data.plan.map((d,i) => ({...d, dayNumber:i+1}));
                         // Enforce VShred mirror rule: D4=D1, D5=D2, D6=D3, D7 stays unique
