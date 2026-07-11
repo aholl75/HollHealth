@@ -204,9 +204,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.39';
+const APP_VERSION = '1.5.40';
 const APP_CHANGELOG = [
-  { version: '1.5.39', date: '2026-07-10', notes: 'libpackage prompt overhaul: (1) pre-filters recipe library against avoid list before building prompt — 63 cards excluded in typical config; (2) injects full ingredient lists per recipe into prompt as "dish — ing1, ing2, ..."; (3) annotates limit-per-week dishes with [LIMIT] flag; (4) explicit 2-3 item snacks requirement in prompt; (5) post-generation validation on import catches avoid-list hits, snack multiplicity < 2, and limit-per-week violations — shows confirm dialog with issue list before importing.' },
+  { version: '1.5.40', date: '2026-07-10', notes: 'PDF grocery list now derived from actual plan + recipe card ingredients rather than Claude-generated grocery data. buildGroceryFromPlan() walks all 7 plan days, looks up each dish in the recipe library, aggregates ingredient quantities (handling fractions and gram weights), routes items into categories, and produces a quantities-included shopping list. Swaps are automatically reflected. Falls back to stored grocery data only if plan is empty. generatePDF() now accepts recipeLibrary parameter.' },
+  { version: '1.5.39', date: '2026-07-10', notes: 'libpackage prompt overhaul: pre-filters recipe library against avoid list (63 cards excluded in typical config); injects full ingredient lists per recipe into prompt; annotates limit-per-week dishes with [LIMIT] flag; explicit 2-3 item snacks requirement; post-generation validation on import catches avoid-list hits, snack multiplicity < 2, and limit-per-week violations.' },
   { version: '1.5.38', date: '2026-07-10', notes: 'Added Goal Weight and Program Start Date fields to Preferences. seedFromPrior() now uses goal-weight gap for graduated deficit: >5 lbs = −250 cal, 1–5 lbs = −125 cal, at/below goal = maintenance. monDateRange() helper computes Mon–Sun date ranges for 28-day cycles. Month strip tooltips show date ranges; Preferences shows cycle dates and goal gap indicator.' },
   { version: '1.5.37', date: '2026-07-10', notes: 'M13+ macro seeding now weight- and goal-aware. seedFromPrior() helper scales prior month calories and p/f/c proportionally to calcTargetCals result (Mifflin-St Jeor + goal adjustment). Day-type variance preserved (low/mod/high). Falls back to prior month as-is if no weight logged, with prompt to log weight. Banner shows current weight and calorie target when scaling is active.' },
   { version: '1.5.36', date: '2026-07-10', notes: 'M13+ macro targets now seeded from prior month instead of falling back to M9. mData derivation, edit form seeding, and save handler fallback all updated. Banner subtitle and month strip indicator updated.' },
@@ -747,10 +748,143 @@ const buildPrompt = (si, plans, prefs, notes) => {
 };
 
 // ─── Grocery gap-fill — merges any plan ingredients missing from imported list ─
-// Takes a grocery {categories:[]} object and the 7-day week plan array.
-// Returns an updated grocery object with missing items appended to the relevant
-// category (or a new "Also Needed" category if no match found).
-const gapFillGrocery = (grocData, weekPlan) => {
+// ─── Build grocery list directly from plan + recipe library ──────────────────
+// Walks actual plan items (post-swap), looks up recipe card ingredients,
+// aggregates quantities, and returns a categorized grocery {categories:[]} object.
+// This replaces the Claude-generated grocery list for PDF output, ensuring swaps
+// are reflected and quantities are accurate.
+const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
+  if (!weekPlan || !recipeLibrary) return null;
+
+  // Normalize a recipe library key the same way the app does
+  const normKey = (s) => s.toLowerCase().trim()
+    .replace(/\s*&\s*/g, ' and ')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\s+/g, ' ').trim();
+
+  // Category routing table
+  const CAT_KEYS = [
+    {name:'Produce',        words:['spinach','kale','arugula','lettuce','greens','broccoli','cauliflower','zucchini','pepper','bell pepper','onion','carrot','celery','cucumber','corn','potato','sweet potato','squash','asparagus','edamame','pea','leek','bok','tomato','beet','mushroom','ginger','garlic','parsley','cilantro','dill','herb','apple','banana','pear','strawberr','blueberr','blackberr','raspberr','orange','grape','melon','berry','berries','lemon','lime','avocado','mango','fruit']},
+    {name:'Protein & Beans',words:['egg','tofu','tempeh','chickpea','lentil','black bean','kidney bean','white bean','refried bean','bean','edamame','sausage','burger','patty','meatball','crumble']},
+    {name:'Grains & Bread', words:['rice','oat','quinoa','bread','pasta','tortilla','flour','noodle','couscous','granola','cracker','pretzel','bagel','cake']},
+    {name:'Nuts, Seeds & Nut Butters', words:['walnut','almond','pumpkin seed','sunflower','chia','flax','hemp','peanut','cashew','pecan','pistachio','seed','nut butter','tahini','almond butter','peanut butter']},
+    {name:'Dairy & Eggs',   words:['egg','cheese','milk','butter','cream','yogurt','kefir']},
+    {name:'Oils & Condiments', words:['oil','olive oil','sesame oil','vinegar','soy sauce','tamari','teriyaki','pesto','hummus','mustard','hot sauce','bbq','barbecue','mayo','dressing','sauce']},
+    {name:'Frozen',         words:['frozen']},
+    {name:'Canned & Packaged', words:['canned','can ','broth','stock','coconut milk','oat milk','almond milk']},
+    {name:'Pantry & Spices',words:['salt','pepper','cumin','coriander','paprika','turmeric','cinnamon','chili','spice','seasoning','herb','sugar','honey','jelly','jam','vanilla','baking','flour','nutritional yeast','protein powder','protein bar','granola bar']},
+    {name:'Beverages',      words:['protein powder','oat milk','almond milk','water','milk']},
+  ];
+
+  const routeItem = (itemName, amountStr) => {
+    const nl = itemName.toLowerCase();
+    for (const cat of CAT_KEYS) {
+      if (cat.words.some(w => nl.includes(w))) return cat.name;
+    }
+    return 'Other';
+  };
+
+  // Accumulate ingredients: key → {name, amounts: Map<unit, totalQty>, category}
+  const ingMap = new Map();
+
+  // Simple quantity parser: extracts number and unit from strings like "2 tsp (9g)" or "1/2 cup (74g)"
+  const parseQty = (amountStr) => {
+    if (!amountStr) return {qty: 1, unit: 'unit', gram: null};
+    const fracMatch = amountStr.match(/^(\d+)\s*\/\s*(\d+)/);
+    const numMatch  = amountStr.match(/^(\d+(?:\.\d+)?)/);
+    let qty = fracMatch ? parseInt(fracMatch[1])/parseInt(fracMatch[2]) : (numMatch ? parseFloat(numMatch[1]) : 1);
+    const unitMatch = amountStr.match(/(\d+(?:\.\d+)?)\s+([a-zA-Z][a-zA-Z ]*?)(?:\s*\(|$)/);
+    const unit = unitMatch ? unitMatch[2].trim().toLowerCase() : 'unit';
+    const gramMatch = amountStr.match(/\((\d+(?:\.\d+)?)g\)/);
+    const gram = gramMatch ? parseFloat(gramMatch[1]) : null;
+    return {qty, unit, gram};
+  };
+
+  const addIngredient = (itemName, amountStr) => {
+    if (!itemName) return;
+    const key = itemName.toLowerCase().trim();
+    // Skip non-shoppable items
+    if (['water','black pepper','salt','ice'].some(s => key === s)) return;
+    if (!ingMap.has(key)) {
+      ingMap.set(key, {name: itemName, amounts: new Map(), category: routeItem(itemName, amountStr)});
+    }
+    const entry = ingMap.get(key);
+    const {qty, unit, gram} = parseQty(amountStr);
+    const uKey = unit;
+    if (!entry.amounts.has(uKey)) entry.amounts.set(uKey, {qty:0, gram:0, unit});
+    const slot = entry.amounts.get(uKey);
+    slot.qty  += qty;
+    slot.gram += gram || 0;
+  };
+
+  // Days to include: D1-D3 are unique; D4=D1, D5=D2, D6=D3 (mirror rule) — so D1-D3 each count twice, D7 once
+  // But we walk the actual stored plan which already has D4-D6 mirrored, so just count unique days:
+  // D1+D4 both appear → ingredient from that day counts ×2 already if we walk all 7 days
+  // So just walk days 1-7 as stored (D4-D6 are copies of D1-D3) — quantities naturally double for mirrored days
+  const uniqueDays = weekPlan.slice(0, 7);
+
+  uniqueDays.forEach(day => {
+    if (!day) return;
+    (day.meals || []).forEach(meal => {
+      (meal.items || []).forEach(item => {
+        const name = (item.name || '').trim();
+        if (!name) return;
+        const key = normKey(name);
+        const card = recipeLibrary[key];
+
+        if (card && card.ingredients && card.ingredients.length > 0) {
+          // Use recipe card ingredients for accurate quantities
+          card.ingredients.forEach(ing => {
+            const ingName = typeof ing === 'string' ? ing : (ing.item || '');
+            const ingAmt  = typeof ing === 'string' ? '' : (ing.amount || '');
+            if (ingName) addIngredient(ingName, ingAmt);
+          });
+        } else {
+          // No card — add dish name with portion as a line item
+          const portion = item.portion || '';
+          addIngredient(name, portion);
+        }
+      });
+    });
+  });
+
+  // Format each ingredient entry as a display string
+  const formatEntry = (entry) => {
+    const parts = [];
+    entry.amounts.forEach(({qty, gram, unit}) => {
+      const qtyStr = Number.isInteger(qty) ? qty : (Math.round(qty * 4) / 4).toFixed(2).replace(/\.?0+$/, '');
+      if (gram > 0) {
+        parts.push(`${qtyStr} ${unit} (${Math.round(gram)}g)`);
+      } else {
+        parts.push(`${qtyStr} ${unit}`);
+      }
+    });
+    return `${entry.name}  ${parts.join(' + ')}`;
+  };
+
+  // Group into categories
+  const catMap = new Map();
+  ingMap.forEach(entry => {
+    const cat = entry.category;
+    if (!catMap.has(cat)) catMap.set(cat, []);
+    catMap.get(cat).push(formatEntry(entry));
+  });
+
+  // Sort categories in preferred order
+  const CAT_ORDER = ['Produce','Protein & Beans','Grains & Bread','Dairy & Eggs','Frozen','Canned & Packaged','Nuts, Seeds & Nut Butters','Oils & Condiments','Pantry & Spices','Beverages','Other'];
+  const categories = [];
+  CAT_ORDER.forEach(name => {
+    if (catMap.has(name)) {
+      categories.push({name, items: catMap.get(name).sort()});
+      catMap.delete(name);
+    }
+  });
+  catMap.forEach((items, name) => categories.push({name, items: items.sort()}));
+
+  return {categories, generatedFromPlan: true};
+};
+
+
   if (!grocData || !grocData.categories || !weekPlan) return grocData;
   // Build normalized word → category index map from existing items
   const cats = grocData.categories.map(function(c) { return {name:c.name, items:[...c.items]}; });
@@ -1283,7 +1417,7 @@ function HollNutrition() {
   }, [allDisplayRecipes, rfilt, rsort]);
 
   // ── PDF Generation ───────────────────────────────────────────────────────────
-  const generatePDF = (weekPlan, groceryData, recipesData, monthNum) => {
+  const generatePDF = (weekPlan, groceryData, recipesData, monthNum, recipeLibrary) => {
     const { jsPDF } = window.jspdf;
     var doc = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
     var PW = 297, PH = 210, PM = 12;
@@ -1506,8 +1640,14 @@ function HollNutrition() {
     // PAGE 2 — Grocery List
     // =========================================================
     newPage();
-    y = bigHeader('Grocery List','Month '+monthNum+'  |  Based on your weekly meal plan');
-    var gcats = (groceryData&&groceryData.categories)?groceryData.categories:[];
+    y = bigHeader('Grocery List','Month '+monthNum+'  |  Derived from your actual meal plan (quantities included)');
+
+    // Always derive grocery from the actual plan + recipe cards so swaps are reflected
+    // and quantities are accurate. Fall back to stored groceryData only if plan is empty.
+    var derivedGroc = (days7.length > 0) ? buildGroceryFromPlan(days7, recipeLibrary) : null;
+    var gcats = (derivedGroc && derivedGroc.categories && derivedGroc.categories.length > 0)
+      ? derivedGroc.categories
+      : ((groceryData && groceryData.categories) ? groceryData.categories : []);
 
     if (gcats.length===0) {
       doc.setTextColor(...GR); doc.setFontSize(10);
@@ -2306,14 +2446,14 @@ function HollNutrition() {
                               if (fbSeen.has(k)) return false;
                               fbSeen.add(k); return true;
                             });
-                            generatePDF(plans[mon], groc[mon], fbFinal, mon);
+                            generatePDF(plans[mon], groc[mon], fbFinal, mon, recipeLibrary);
                             return;
                           }
                         }
                         setErr('No matching recipe cards found for this week\'s meals. Use 📋 Reimport Recipes to add them.');
                         return;
                       }
-                      generatePDF(plans[mon], groc[mon], rdataFinal, mon);
+                      generatePDF(plans[mon], groc[mon], rdataFinal, mon, recipeLibrary);
                     } catch(e) { setErr('PDF error: ' + e.message); }
                   }}>⬇ Download PDF</button>
                 )}
