@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.41';
+const APP_VERSION = '1.5.42';
 const APP_CHANGELOG = [
+  { version: '1.5.42', date: '2026-07-11', notes: 'PDF grocery list bug fixes: (1) Added parseStringIngredient() helper inside buildGroceryFromPlan() to correctly split legacy string-format recipe card ingredients (32 of 168 cards affected) into item name + amount — previously the whole string was used as the item name with "1 unit" quantity, causing items like "Apple" to appear as "apples 2 medium (3\\" dia) (364g)  1 unit". (2) Fixed parseQty() to handle mixed numbers like "1 1/2 oz" (previously lost the fractional part). (3) Added one-time migration to repair malformed cantaloupe card ingredient string "melon) (138g) melon) (276g)" → {item: "Cantaloupe", amount: "1 cup cubed (138g)"}.' },
   { version: '1.5.41', date: '2026-07-10', notes: 'Code review cleanup: removed redundant 65-item RECIPES constant (superseded by 168-card recipeLibrary); simplified allDisplayRecipes to build from recipeLibrary as single source of truth; removed RECIPES from autocomplete; renamed latestWeight to latestNoteWeight in buildPrompt for consistency with component naming; removed stale recipeForSlot comment; removed console.warn from recipe loop catch; collapsed triple blank lines.' },
   { version: '1.5.40', date: '2026-07-10', notes: 'PDF grocery list now derived from actual plan + recipe card ingredients via buildGroceryFromPlan(). Walks all 7 days, aggregates quantities with unit parsing, routes into categories. Swaps automatically reflected. Falls back to stored data if plan empty. generatePDF() now accepts recipeLibrary param.' },
   { version: '1.5.39', date: '2026-07-10', notes: 'libpackage prompt overhaul: pre-filters recipe library against avoid list (63 cards excluded in typical config); injects full ingredient lists per recipe into prompt; annotates limit-per-week dishes with [LIMIT] flag; explicit 2-3 item snacks requirement; post-generation validation on import catches avoid-list hits, snack multiplicity < 2, and limit-per-week violations.' },
@@ -723,9 +724,14 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   // Simple quantity parser: extracts number and unit from strings like "2 tsp (9g)" or "1/2 cup (74g)"
   const parseQty = (amountStr) => {
     if (!amountStr) return {qty: 1, unit: 'unit', gram: null};
-    const fracMatch = amountStr.match(/^(\d+)\s*\/\s*(\d+)/);
-    const numMatch  = amountStr.match(/^(\d+(?:\.\d+)?)/);
-    let qty = fracMatch ? parseInt(fracMatch[1])/parseInt(fracMatch[2]) : (numMatch ? parseFloat(numMatch[1]) : 1);
+    // Mixed number: "1 1/2" → 1.5
+    const mixedMatch = amountStr.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)/);
+    const fracMatch  = amountStr.match(/^(\d+)\s*\/\s*(\d+)/);
+    const numMatch   = amountStr.match(/^(\d+(?:\.\d+)?)/);
+    let qty = mixedMatch
+      ? parseInt(mixedMatch[1]) + parseInt(mixedMatch[2])/parseInt(mixedMatch[3])
+      : fracMatch ? parseInt(fracMatch[1])/parseInt(fracMatch[2])
+      : (numMatch ? parseFloat(numMatch[1]) : 1);
     const unitMatch = amountStr.match(/(\d+(?:\.\d+)?)\s+([a-zA-Z][a-zA-Z ]*?)(?:\s*\(|$)/);
     const unit = unitMatch ? unitMatch[2].trim().toLowerCase() : 'unit';
     const gramMatch = amountStr.match(/\((\d+(?:\.\d+)?)g\)/);
@@ -766,10 +772,45 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
         const card = recipeLibrary[key];
 
         if (card && card.ingredients && card.ingredients.length > 0) {
-          // Use recipe card ingredients for accurate quantities
+          // Use recipe card ingredients for accurate quantities.
+          // Some legacy cards store ingredients as raw strings (e.g. "apples 2 medium (364g)")
+          // instead of {item, amount} dicts. parseStringIngredient splits them cleanly.
+          const parseStringIngredient = (s) => {
+            if (!s) return {ingName:'', ingAmt:''};
+            s = s.trim();
+            // Strip trailing gram weight: (364g), (45g)
+            const clean = s.replace(/\s*\(\d+(?:\.\d+)?g\)\s*$/, '')
+              // Strip clarification parens: (3" dia), (120mL), (7" to 7-7/8" long)
+              .replace(/\s*\([^)]*\)\s*/g, ' ')
+              // Strip trailing state modifiers: ", raw" ", whole" etc.
+              .replace(/,\s*(raw|whole|dry|dried|cooked|drained|rinsed|unsweetened|unsalted)\s*$/i, '')
+              .trim();
+            const UNITS_RE = /tbsp|tsp|cups?|oz|g\b|lb|dash|large|medium|small|slices?|pieces?|cloves?|stalks?|head|can|scoop|serving|orange|apple|banana/i;
+            // Qty-first (starts with digit or fraction): "3 large eggs", "1/2 cup oats"
+            if (/^\d/.test(clean)) {
+              const m = clean.match(new RegExp('^([\\d/\\.\\s]+\\s*(?:' + UNITS_RE.source + ')s?)\\s+(.+)', 'i'));
+              if (m) return {ingName: m[2].trim(), ingAmt: m[1].trim()};
+              const parts = clean.split(/\s+/, 2);
+              return {ingName: clean.slice(parts[0].length).trim(), ingAmt: parts[0]};
+            }
+            // Name-first: "apples 2 medium", "peanut butter 4 tbsp"
+            const m = clean.match(new RegExp('^(.+?)\\s+([\\d/\\.\\s]+\\s*(?:' + UNITS_RE.source + ')s?)\\s*$', 'i'));
+            if (m) return {ingName: m[1].trim(), ingAmt: m[2].trim()};
+            // Fallback: trailing number only
+            const m2 = clean.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*$/);
+            if (m2) return {ingName: m2[1].trim(), ingAmt: m2[2].trim()};
+            return {ingName: clean, ingAmt: ''};
+          };
+
           card.ingredients.forEach(ing => {
-            const ingName = typeof ing === 'string' ? ing : (ing.item || '');
-            const ingAmt  = typeof ing === 'string' ? '' : (ing.amount || '');
+            let ingName, ingAmt;
+            if (typeof ing === 'string') {
+              // Legacy string format — parse into item name + amount
+              ({ingName, ingAmt} = parseStringIngredient(ing));
+            } else {
+              ingName = ing.item || '';
+              ingAmt  = ing.amount || '';
+            }
             if (ingName) addIngredient(ingName, ingAmt);
           });
         } else {
@@ -997,6 +1038,13 @@ function HollNutrition() {
             lib[name] = {...lib[name], servingSize:'1 to 2 servings (halve ingredients for 1)'};
           }
         });
+        // One-time fixup: repair malformed cantaloupe ingredient string
+        const cantaloupeKey = 'cantaloupe';
+        if (lib[cantaloupeKey] && Array.isArray(lib[cantaloupeKey].ingredients) &&
+            lib[cantaloupeKey].ingredients.some(i => typeof i === 'string' && i.includes('melon)'))) {
+          lib[cantaloupeKey] = {...lib[cantaloupeKey],
+            ingredients: [{item: 'Cantaloupe', amount: '1 cup cubed (138g)'}]};
+        }
         setRecipeLibrary(lib);
       } } catch(e){}
       // ── One-time migration: re-key library entries by normName ────────────────
