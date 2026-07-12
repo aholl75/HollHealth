@@ -172,7 +172,6 @@
   <script type="text/babel-pending" data-presets="react">
     const { useState, useEffect, useMemo, useRef } = React;
 
-
 // ── localStorage shim (matches window.storage API used in Claude artifacts) ──
 const LS = {
   get: (key) => {
@@ -185,8 +184,6 @@ const LS = {
     try { localStorage.setItem(key, String(value)); } catch(e) {}
   },
 };
-
-
 
 // ─── 9 months of real program data ───────────────────────────────────────────
 const MONTH_DATA = {
@@ -204,9 +201,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.40';
+const APP_VERSION = '1.5.41';
 const APP_CHANGELOG = [
-  { version: '1.5.40', date: '2026-07-10', notes: 'PDF grocery list now derived from actual plan + recipe card ingredients rather than Claude-generated grocery data. buildGroceryFromPlan() walks all 7 plan days, looks up each dish in the recipe library, aggregates ingredient quantities (handling fractions and gram weights), routes items into categories, and produces a quantities-included shopping list. Swaps are automatically reflected. Falls back to stored grocery data only if plan is empty. generatePDF() now accepts recipeLibrary parameter.' },
+  { version: '1.5.41', date: '2026-07-10', notes: 'Code review cleanup: removed redundant 65-item RECIPES constant (superseded by 168-card recipeLibrary); simplified allDisplayRecipes to build from recipeLibrary as single source of truth; removed RECIPES from autocomplete; renamed latestWeight to latestNoteWeight in buildPrompt for consistency with component naming; removed stale recipeForSlot comment; removed console.warn from recipe loop catch; collapsed triple blank lines.' },
+  { version: '1.5.40', date: '2026-07-10', notes: 'PDF grocery list now derived from actual plan + recipe card ingredients via buildGroceryFromPlan(). Walks all 7 days, aggregates quantities with unit parsing, routes into categories. Swaps automatically reflected. Falls back to stored data if plan empty. generatePDF() now accepts recipeLibrary param.' },
   { version: '1.5.39', date: '2026-07-10', notes: 'libpackage prompt overhaul: pre-filters recipe library against avoid list (63 cards excluded in typical config); injects full ingredient lists per recipe into prompt; annotates limit-per-week dishes with [LIMIT] flag; explicit 2-3 item snacks requirement; post-generation validation on import catches avoid-list hits, snack multiplicity < 2, and limit-per-week violations.' },
   { version: '1.5.38', date: '2026-07-10', notes: 'Added Goal Weight and Program Start Date fields to Preferences. seedFromPrior() now uses goal-weight gap for graduated deficit: >5 lbs = −250 cal, 1–5 lbs = −125 cal, at/below goal = maintenance. monDateRange() helper computes Mon–Sun date ranges for 28-day cycles. Month strip tooltips show date ranges; Preferences shows cycle dates and goal gap indicator.' },
   { version: '1.5.37', date: '2026-07-10', notes: 'M13+ macro seeding now weight- and goal-aware. seedFromPrior() helper scales prior month calories and p/f/c proportionally to calcTargetCals result (Mifflin-St Jeor + goal adjustment). Day-type variance preserved (low/mod/high). Falls back to prior month as-is if no weight logged, with prompt to log weight. Banner shows current weight and calorie target when scaling is active.' },
@@ -229,69 +227,6 @@ const APP_CHANGELOG = [
 const PROJECTED = new Set([10,11,12]);
 
 // ─── Recipe library (65 dishes from 9-month program) ─────────────────────────
-const RECIPES = [
-  {name:"Asparagus",cal:125,p:3,f:10,c:3,fb:1,cat:"Vegetable"},
-  {name:"Asparagus and pea risotto",cal:324,p:8,f:15,c:38,fb:2,cat:"Dinner"},
-  {name:"Basic chia pudding",cal:210,p:7,f:11,c:12,fb:6,cat:"Snack"},
-  {name:"Bbq cauliflower wings",cal:268,p:14,f:2,c:40,fb:9,cat:"Dinner"},
-  {name:"Bell pepper strips and hummus",cal:170,p:7,f:8,c:10,fb:7,cat:"Snack"},
-  {name:"Berry smoothie bowl",cal:364,p:30,f:5,c:37,fb:12,cat:"Breakfast"},
-  {name:"Berry spinach smoothie",cal:370,p:13,f:13,c:41,fb:6,cat:"Breakfast"},
-  {name:"Black bean and couscous salad",cal:335,p:14,f:8,c:40,fb:13,cat:"Dinner"},
-  {name:"Breakfast cereal with protein milk",cal:248,p:18,f:5,c:29,fb:3,cat:"Breakfast"},
-  {name:"Brussels sprout apple walnut salad",cal:253,p:4,f:19,c:12,fb:4,cat:"Lunch"},
-  {name:"Brussels sprouts and broccoli salad",cal:292,p:7,f:20,c:16,fb:6,cat:"Dinner"},
-  {name:"Buttered corn",cal:159,p:3,f:8,c:17,fb:2,cat:"Vegetable"},
-  {name:"Buttered green beans",cal:98,p:2,f:8,c:4,fb:2,cat:"Vegetable"},
-  {name:"Butternut squash quinoa salad",cal:403,p:11,f:22,c:35,fb:6,cat:"Lunch"},
-  {name:"Buttery garlic cauliflower mash",cal:253,p:4,f:23,c:6,fb:2,cat:"Dinner"},
-  {name:"Carrot and grounds stir fry",cal:332,p:25,f:15,c:15,fb:4,cat:"Dinner"},
-  {name:"Celery and peanut butter",cal:218,p:8,f:17,c:7,fb:3,cat:"Snack"},
-  {name:"Chickpea and sweet potato salad",cal:218,p:8,f:7,c:22,fb:5,cat:"Lunch"},
-  {name:"Chili and cheese omelet",cal:217,p:15,f:17,c:1,fb:1,cat:"Breakfast"},
-  {name:"Chipotle stewed beans and greens",cal:328,p:16,f:8,c:30,fb:18,cat:"Lunch"},
-  {name:"Cranberry spinach salad",cal:190,p:3,f:12,c:14,fb:2,cat:"Dinner"},
-  {name:"Creamy mushroom pasta",cal:355,p:14,f:10,c:49,fb:3,cat:"Dinner"},
-  {name:"Edamame and beet salad",cal:171,p:9,f:7,c:12,fb:6,cat:"Dinner"},
-  {name:"Edamame and chickpea salad",cal:267,p:12,f:10,c:22,fb:10,cat:"Lunch"},
-  {name:"Edamame slaw salad bowl",cal:196,p:8,f:9,c:13,fb:5,cat:"Lunch"},
-  {name:"Garlic parmesan roasted potatoes",cal:115,p:3,f:3,c:16,fb:3,cat:"Dinner"},
-  {name:"Greek cucumber and feta salad",cal:121,p:4,f:9,c:6,fb:1,cat:"Lunch"},
-  {name:"Greek white bean and quinoa bowl",cal:521,p:22,f:16,c:61,fb:12,cat:"Dinner"},
-  {name:"Green bean beet and pepita salad",cal:240,p:8,f:16,c:13,fb:5,cat:"Lunch"},
-  {name:"Green beans with almonds and lemon",cal:111,p:4,f:7,c:6,fb:4,cat:"Vegetable"},
-  {name:"Healthy cereal bowl",cal:402,p:15,f:26,c:18,fb:10,cat:"Breakfast"},
-  {name:"Herb and onion frittata",cal:306,p:18,f:19,c:14,fb:3,cat:"Breakfast"},
-  {name:"Honey glazed carrots",cal:85,p:1,f:2,c:12,fb:2,cat:"Vegetable"},
-  {name:"Kung pao cauliflower",cal:149,p:5,f:11,c:6,fb:2,cat:"Dinner"},
-  {name:"Lemony chickpea and broccoli pasta",cal:359,p:13,f:12,c:44,fb:6,cat:"Dinner"},
-  {name:"Lemony lentil and mushroom salad",cal:359,p:18,f:10,c:40,fb:9,cat:"Lunch"},
-  {name:"Lemony zucchini chickpea feta bowl",cal:260,p:10,f:13,c:18,fb:7,cat:"Dinner"},
-  {name:"Low-carb oatmeal",cal:335,p:11,f:24,c:6,fb:10,cat:"Breakfast"},
-  {name:"Mashed sweet potatoes",cal:183,p:3,f:0,c:36,fb:4,cat:"Dinner"},
-  {name:"Mexican bean salad",cal:430,p:15,f:20,c:34,fb:9,cat:"Lunch"},
-  {name:"Mushroom mac and cheese",cal:333,p:14,f:15,c:33,fb:3,cat:"Dinner"},
-  {name:"Pan roasted zucchini",cal:166,p:3,f:13,c:6,fb:2,cat:"Vegetable"},
-  {name:"Pesto chickpeas and quinoa bowl",cal:556,p:21,f:23,c:50,fb:16,cat:"Dinner"},
-  {name:"Red pepper and rice power bowl",cal:442,p:16,f:7,c:68,fb:11,cat:"Lunch"},
-  {name:"Roasted brussels sprouts",cal:116,p:3,f:7,c:6,fb:4,cat:"Vegetable"},
-  {name:"Roasted cauliflower",cal:116,p:3,f:8,c:6,fb:3,cat:"Vegetable"},
-  {name:"Roasted rosemary sweet potatoes",cal:210,p:2,f:9,c:25,fb:5,cat:"Dinner"},
-  {name:"Sesame peanut zoodles",cal:294,p:13,f:19,c:13,fb:6,cat:"Dinner"},
-  {name:"Simple cinnamon oatmeal",cal:246,p:8,f:7,c:35,fb:4,cat:"Breakfast"},
-  {name:"Sticky meatless meatball bowl",cal:469,p:29,f:17,c:43,fb:6,cat:"Dinner"},
-  {name:"Strawberry apple spinach salad",cal:168,p:3,f:7,c:17,fb:5,cat:"Lunch"},
-  {name:"Strawberry protein smoothie",cal:355,p:34,f:15,c:15,fb:5,cat:"Breakfast"},
-  {name:"Sunflower seeds",cal:144,p:7,f:11,c:2,fb:2,cat:"Snack"},
-  {name:"Sweet potato fries",cal:177,p:3,f:5,c:26,fb:3,cat:"Dinner"},
-  {name:"Teriyaki chickpea stir fry",cal:185,p:9,f:4,c:20,fb:8,cat:"Dinner"},
-  {name:"Thai peanut chickpea rice bowl",cal:436,p:18,f:16,c:44,fb:12,cat:"Lunch"},
-  {name:"Tuscan white bean soup",cal:222,p:11,f:5,c:27,fb:7,cat:"Dinner"},
-  {name:"Vegan guinness stew",cal:549,p:30,f:20,c:57,fb:9,cat:"Dinner"},
-  {name:"Vegan sausage and veggie sheet pan",cal:528,p:36,f:24,c:34,fb:9,cat:"Dinner"},
-  {name:"White bean bowl",cal:267,p:10,f:5,c:39,fb:7,cat:"Dinner"},
-];
-
 // ─── Food Swap Bible ──────────────────────────────────────────────────────────
 const SUBS = {
   Fat:[
@@ -507,8 +442,6 @@ const countFlagged = (dayPlan, avoidList) => {
   return dayPlan.meals.reduce((s,m) => s + m.items.filter(i => isDisliked(i.name, avoidList)).length, 0);
 };
 
-
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 const Bdg = ({ct, sm}) => (
   <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:sm?'2px 8px':'4px 12px',
@@ -589,8 +522,8 @@ const buildPrompt = (si, plans, prefs, notes) => {
   const M = si.mon, D = si.day;
 
   // Dynamic calorie targets from prefs + latest weight
-  const latestWeight = (notes||[]).filter(n=>n.weight).sort((a,b)=>b.date.localeCompare(a.date))[0]?.weight;
-  const calcResult = latestWeight ? calcTargetCals(+latestWeight, prefs||{}) : null;
+  const latestNoteWeight = (notes||[]).filter(n=>n.weight).sort((a,b)=>b.date.localeCompare(a.date))[0]?.weight;
+  const calcResult = latestNoteWeight ? calcTargetCals(+latestNoteWeight, prefs||{}) : null;
   const goalLabel = {loss:'weight loss', maintain:'weight maintenance', build:'strength building'}[(prefs||{}).goal||'loss'];
 
   // Build dynamic calorie targets per cycle type
@@ -884,7 +817,11 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   return {categories, generatedFromPlan: true};
 };
 
-
+// ─── Grocery gap-fill — merges any plan ingredients missing from imported list ─
+// Takes a grocery {categories:[]} object and the 7-day week plan array.
+// Returns an updated grocery object with missing items appended to the relevant
+// category (or a new "Also Needed" category if no match found).
+const gapFillGrocery = (grocData, weekPlan) => {
   if (!grocData || !grocData.categories || !weekPlan) return grocData;
   // Build normalized word → category index map from existing items
   const cats = grocData.categories.map(function(c) { return {name:c.name, items:[...c.items]}; });
@@ -1002,8 +939,6 @@ function HollNutrition() {
   const [healthApptForm, setHealthApptForm] = useState({type:'',date:'',interval:12,notes:'',editing:null});
   const [darkMode, setDarkMode] = useState(false);
   const [layoutMode, setLayoutMode] = useState(() => localStorage.getItem('hn_layout') || 'auto');
-
-
 
   // ── Storage ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1323,33 +1258,27 @@ function HollNutrition() {
   // Reset promptCopied whenever import modal opens
   useEffect(() => { if (showImport) setPromptCopied(false); }, [showImport]);
 
-  // ── Recipes filter ────────────────────────────────────────────────────────────
-  // Merge hardcoded RECIPES with imported recipeLibrary for display
+  // ── Recipes display ────────────────────────────────────────────────────────────
+  // Merge recipeLibrary (168 cards) with any session-imported recipes for display.
+  // recipeLibrary is the single source of truth — no fallback to the old RECIPES constant.
   const allDisplayRecipes = useMemo(() => {
     // Build a name→macros lookup from all meals across all stored plans
-    // This lets non-hardcoded recipe cards show real macros pulled from the meal plan
+    // so non-library recipe cards can show real macros pulled from the plan data
     const mealMacros = {};
     Object.values(plans).forEach(weekPlan => {
       (weekPlan || []).forEach(day => {
         (day?.meals || []).forEach(meal => {
           if (!meal?.slot || meal.slot === 'Protein Supplement') return;
-          // Try to match meal to a recipe name via the items
-          // The meal's first item whose name closely matches a recipe name is the key signal
-          // but more reliably: use the meal slot + item names to derive a recipe name
-          // We store macros keyed by each item name too so partial matches work
           const mealKey = (meal.items||[]).map(i=>(i.name||'').toLowerCase()).join(' ');
           if (meal.totalCalories > 0) {
-            const macros = {cal: meal.totalCalories, p: meal.protein||0, f: meal.fat||0, c: meal.carbs||0, fb: meal.fiber||0};
-            // Key by full item name list (for exact recipe matching)
-            mealMacros[mealKey] = macros;
+            mealMacros[mealKey] = {cal: meal.totalCalories, p: meal.protein||0, f: meal.fat||0, c: meal.carbs||0, fb: meal.fiber||0};
           }
         });
       });
     });
 
-    // Start with hardcoded program recipes (have cal/p/f/c/cat fields)
+    // Build display list from recipeLibrary as primary source, then any session imports
     const base = {};
-    RECIPES.forEach(r => { base[normName(r.name)] = r; });
     const allSources = [
       ...Object.values(recipeLibrary),
       ...currentRecipes,
@@ -1358,33 +1287,32 @@ function HollNutrition() {
       try {
         if (!r || typeof r !== 'object' || !r.name) return;
         if (!r.ingredients && !r.steps) return;
-      const key = normName(r.name);
-      if (base[key]) {
-        base[key] = {...base[key], _imported: true, _data: r};
-      } else {
-        // New recipe not in hardcoded set — look up macros from plan meals by matching
-        // ingredient names against the meal macro lookup
-        const ingWords = (r.ingredients||[]).map(i=>(i.item||'').toLowerCase()).join(' ');
-        let bestMacros = null;
-        let bestScore = 0;
-        Object.keys(mealMacros).forEach(mealKey => {
-          const words = ingWords.split(/\s+/).filter(w => w.length > 3);
-          const matches = words.filter(w => mealKey.includes(w)).length;
-          if (matches > bestScore) { bestScore = matches; bestMacros = mealMacros[mealKey]; }
-        });
-        base[key] = {
-          name: r.name,
-          cal: (bestMacros?.cal) || r.calories || r.cal || 0,
-          p:   (bestMacros?.p)   || r.protein  || r.p   || 0,
-          f:   (bestMacros?.f)   || r.fat      || r.f   || 0,
-          c:   (bestMacros?.c)   || r.carbs    || r.c   || 0,
-          fb:  (bestMacros?.fb)  || r.fiber    || r.fb  || 0,
-          cat: r.cat || 'Imported',
-          _imported: true,
-          _data: r,
-        };
-      }
-      } catch(recErr) { console.warn('Recipe library entry error:', recErr); }
+        const key = normName(r.name);
+        if (!base[key]) {
+          // Look up macros from plan meals by matching ingredient names
+          const ingWords = (r.ingredients||[]).map(i=>(i.item||'').toLowerCase()).join(' ');
+          let bestMacros = null;
+          let bestScore = 0;
+          Object.keys(mealMacros).forEach(mealKey => {
+            const words = ingWords.split(/\s+/).filter(w => w.length > 3);
+            const matches = words.filter(w => mealKey.includes(w)).length;
+            if (matches > bestScore) { bestScore = matches; bestMacros = mealMacros[mealKey]; }
+          });
+          base[key] = {
+            name: r.name,
+            cal: (bestMacros?.cal) || r.calories || r.cal || 0,
+            p:   (bestMacros?.p)   || r.protein  || r.p   || 0,
+            f:   (bestMacros?.f)   || r.fat      || r.f   || 0,
+            c:   (bestMacros?.c)   || r.carbs    || r.c   || 0,
+            fb:  (bestMacros?.fb)  || r.fiber    || r.fb  || 0,
+            cat: r.cat || 'Library',
+            _imported: true,
+            _data: r,
+          };
+        } else {
+          base[key] = {...base[key], _imported: true, _data: r};
+        }
+      } catch(recErr) { /* skip malformed recipe library entry */ }
     });
     return Object.values(base);
   }, [recipeLibrary, currentRecipes, plans]);
@@ -1431,10 +1359,6 @@ function HollNutrition() {
     var days7 = (weekPlan || []).slice(0,7);
     var recipeList = Array.isArray(recipesData) ? recipesData : (recipesData ? Object.values(recipesData) : []);
     var pageNum = 0;
-
-    // Build a scored recipe index: for each recipe score it against every meal
-    // Score = number of meal item name words (>3 chars) that appear in the recipe name or ingredients
-    // recipeForSlot removed — overview now uses exact item-name matching directly
 
     var newPage = function(first) {
       if (!first) doc.addPage('a4','landscape');
@@ -1832,7 +1756,6 @@ function HollNutrition() {
     doc.save('HollHealth-Month'+monthNum+'-'+new Date().toISOString().slice(0,10)+'.pdf');
   };
 
-
   // ─── Styles ────────────────────────────────────────────────────────────────────
   const DK = darkMode;
   const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
@@ -2024,8 +1947,6 @@ function HollNutrition() {
         </div>
       </header>
 
-
-
       {/* Help */}
       {showHelp && (
         <div style={{background:DK?'#1e2820':'white',borderBottom:`2px solid ${DK?'#3a4a3c':'#e8e2d8'}`,padding:'20px 24px',boxShadow:'0 4px 16px rgba(0,0,0,0.08)'}}>
@@ -2132,7 +2053,6 @@ function HollNutrition() {
           </div>
         </div>
       )}
-
 
       {/* Month strip */}
       <div className="hh-month-strip" style={{background:DK?'#1e2820':'white',borderBottom:`1px solid ${DK?'#3a4a3c':'#e8e2d8'}`,padding:'9px 20px',display:'flex',gap:5,overflowX:'auto',position:'sticky',top:52,zIndex:50,alignItems:'center'}}>
@@ -2787,7 +2707,6 @@ function HollNutrition() {
                   </div>
                 ))}
 
-
               </>
             ) : (
               <div style={{...S.card,textAlign:'center',padding:48}}>
@@ -3072,7 +2991,6 @@ function HollNutrition() {
           const knownItems = [...new Set([
             ...Object.values(recipeLibrary).map(r=>r.name).filter(Boolean),
             ...Object.values(plans).flatMap(wk=>(wk||[]).flatMap(d=>(d?.meals||[]).flatMap(m=>(m?.items||[]).map(i=>i.name)))).filter(Boolean),
-            ...RECIPES.map(r=>r.name),
           ])].sort();
 
           const addToList = (field, inputField, val) => {
@@ -4214,7 +4132,6 @@ Return exactly 4 alternatives as a JSON array:
     </div>
   );
 }
-
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
 
