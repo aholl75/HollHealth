@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.42';
+const APP_VERSION = '1.5.43';
 const APP_CHANGELOG = [
+  { version: '1.5.43', date: '2026-07-11', notes: 'PDF grocery list accuracy pass (Phase 2): (1) Single-ingredient whole-food cards (apple, banana, sunflower seeds, etc.) now use item.portion from the plan instead of the card\'s ingredient quantity — fixes doubled quantities caused by 2-serving card data (apple was showing 10 medium instead of 5). (2) CAT_KEYS routing overhaul: moved oat milk/almond milk/coconut milk to top of Canned & Packaged so they don\'t mis-route to Grains via bare "oat"; removed "corn" from Produce (corn tortillas now correctly route to Grains via "tortilla"); replaced bare "egg" in Protein with "large egg"/"whole egg"/"eggs" to prevent false-positive on "veggie" substring; added "mixed nut" and "nut" to Nuts category so Mixed Nuts routes correctly; added "straw","chip","popcorn" to Pantry so Veggie Straws routes to Pantry instead of Protein.' },
   { version: '1.5.42', date: '2026-07-11', notes: 'PDF grocery list bug fixes: (1) Added parseStringIngredient() helper inside buildGroceryFromPlan() to correctly split legacy string-format recipe card ingredients (32 of 168 cards affected) into item name + amount — previously the whole string was used as the item name with "1 unit" quantity, causing items like "Apple" to appear as "apples 2 medium (3\\" dia) (364g)  1 unit". (2) Fixed parseQty() to handle mixed numbers like "1 1/2 oz" (previously lost the fractional part). (3) Added one-time migration to repair malformed cantaloupe card ingredient string "melon) (138g) melon) (276g)" → {item: "Cantaloupe", amount: "1 cup cubed (138g)"}.' },
   { version: '1.5.41', date: '2026-07-10', notes: 'Code review cleanup: removed redundant 65-item RECIPES constant (superseded by 168-card recipeLibrary); simplified allDisplayRecipes to build from recipeLibrary as single source of truth; removed RECIPES from autocomplete; renamed latestWeight to latestNoteWeight in buildPrompt for consistency with component naming; removed stale recipeForSlot comment; removed console.warn from recipe loop catch; collapsed triple blank lines.' },
   { version: '1.5.40', date: '2026-07-10', notes: 'PDF grocery list now derived from actual plan + recipe card ingredients via buildGroceryFromPlan(). Walks all 7 days, aggregates quantities with unit parsing, routes into categories. Swaps automatically reflected. Falls back to stored data if plan empty. generatePDF() now accepts recipeLibrary param.' },
@@ -698,16 +699,20 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
 
   // Category routing table
   const CAT_KEYS = [
-    {name:'Produce',        words:['spinach','kale','arugula','lettuce','greens','broccoli','cauliflower','zucchini','pepper','bell pepper','onion','carrot','celery','cucumber','corn','potato','sweet potato','squash','asparagus','edamame','pea','leek','bok','tomato','beet','mushroom','ginger','garlic','parsley','cilantro','dill','herb','apple','banana','pear','strawberr','blueberr','blackberr','raspberr','orange','grape','melon','berry','berries','lemon','lime','avocado','mango','fruit']},
-    {name:'Protein & Beans',words:['egg','tofu','tempeh','chickpea','lentil','black bean','kidney bean','white bean','refried bean','bean','edamame','sausage','burger','patty','meatball','crumble']},
-    {name:'Grains & Bread', words:['rice','oat','quinoa','bread','pasta','tortilla','flour','noodle','couscous','granola','cracker','pretzel','bagel','cake']},
-    {name:'Nuts, Seeds & Nut Butters', words:['walnut','almond','pumpkin seed','sunflower','chia','flax','hemp','peanut','cashew','pecan','pistachio','seed','nut butter','tahini','almond butter','peanut butter']},
-    {name:'Dairy & Eggs',   words:['egg','cheese','milk','butter','cream','yogurt','kefir']},
+    // NOTE: order matters — first match wins. More-specific entries must come before broad ones.
+    // 'oat milk' / 'almond milk' checked before bare 'oat' / 'milk' to prevent mis-routing.
+    // 'egg' removed from Protein to prevent false-positive on 'veggie' ('v-egg-ie' substring).
+    // 'corn' removed from Produce — corn tortillas belong in Grains (matched via 'tortilla').
+    {name:'Canned & Packaged', words:['oat milk','almond milk','coconut milk','canned','can ','broth','stock']},
+    {name:'Produce',        words:['spinach','kale','arugula','lettuce','greens','broccoli','cauliflower','zucchini','pepper','bell pepper','onion','carrot','celery','cucumber','potato','sweet potato','squash','asparagus','edamame','pea','leek','bok','tomato','beet','mushroom','ginger','garlic','parsley','cilantro','dill','apple','banana','pear','strawberr','blueberr','blackberr','raspberr','orange','grape','melon','berry','berries','lemon','lime','avocado','mango','fruit']},
+    {name:'Protein & Beans',words:['large egg','whole egg','tofu','tempeh','chickpea','lentil','black bean','kidney bean','white bean','refried bean','bean','edamame','sausage','burger','patty','meatball','crumble']},
+    {name:'Grains & Bread', words:['rice','oat','quinoa','bread','pasta','tortilla','flour','noodle','couscous','granola','cracker','pretzel','bagel','corn']},
+    {name:'Nuts, Seeds & Nut Butters', words:['walnut','almond','pumpkin seed','sunflower','chia','flax','hemp','peanut','cashew','pecan','pistachio','mixed nut','seed','nut butter','tahini','almond butter','peanut butter','nut']},
+    {name:'Dairy & Eggs',   words:[' egg ','eggs','cheese','milk','butter','cream','yogurt','kefir']},
     {name:'Oils & Condiments', words:['oil','olive oil','sesame oil','vinegar','soy sauce','tamari','teriyaki','pesto','hummus','mustard','hot sauce','bbq','barbecue','mayo','dressing','sauce']},
     {name:'Frozen',         words:['frozen']},
-    {name:'Canned & Packaged', words:['canned','can ','broth','stock','coconut milk','oat milk','almond milk']},
-    {name:'Pantry & Spices',words:['salt','pepper','cumin','coriander','paprika','turmeric','cinnamon','chili','spice','seasoning','herb','sugar','honey','jelly','jam','vanilla','baking','flour','nutritional yeast','protein powder','protein bar','granola bar']},
-    {name:'Beverages',      words:['protein powder','oat milk','almond milk','water','milk']},
+    {name:'Pantry & Spices',words:['salt','pepper','cumin','coriander','paprika','turmeric','cinnamon','chili','spice','seasoning','herb','sugar','honey','jelly','jam','vanilla','baking','flour','nutritional yeast','protein powder','protein bar','granola bar','straw','chip','popcorn','pretzel','cracker']},
+    {name:'Beverages',      words:['protein powder','water','milk']},
   ];
 
   const routeItem = (itemName, amountStr) => {
@@ -802,17 +807,40 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
             return {ingName: clean, ingAmt: ''};
           };
 
-          card.ingredients.forEach(ing => {
-            let ingName, ingAmt;
-            if (typeof ing === 'string') {
-              // Legacy string format — parse into item name + amount
-              ({ingName, ingAmt} = parseStringIngredient(ing));
-            } else {
-              ingName = ing.item || '';
-              ingAmt  = ing.amount || '';
-            }
-            if (ingName) addIngredient(ingName, ingAmt);
-          });
+          // Single-ingredient whole-food cards (e.g. 'apple', 'banana', 'sunflower seeds'):
+          // The card's ingredient quantity may not match the plan's actual portion
+          // (some cards have doubled quantities from 2-serving imports).
+          // For cards with exactly 1 ingredient whose name closely matches the plan item name,
+          // use item.portion from the plan — it's more accurate than the card quantity.
+          const isSingleIngredientCard = card.ingredients.length === 1;
+          const singleIngName = isSingleIngredientCard
+            ? (typeof card.ingredients[0] === 'string'
+                ? parseStringIngredient(card.ingredients[0]).ingName
+                : (card.ingredients[0].item || ''))
+            : '';
+          const itemNameLower = name.toLowerCase();
+          const singleIngLower = singleIngName.toLowerCase();
+          // "Close match": item name appears in ingredient name or vice versa (handles 'apple'↔'apples')
+          const isWholeFoodCard = isSingleIngredientCard &&
+            (singleIngLower.includes(itemNameLower) || itemNameLower.includes(singleIngLower) ||
+             singleIngLower.replace(/s$/, '') === itemNameLower.replace(/s$/, ''));
+
+          if (isWholeFoodCard && item.portion) {
+            // Use the plan's portion string — it represents what was actually consumed that day
+            addIngredient(singleIngName || name, item.portion);
+          } else {
+            card.ingredients.forEach(ing => {
+              let ingName, ingAmt;
+              if (typeof ing === 'string') {
+                // Legacy string format — parse into item name + amount
+                ({ingName, ingAmt} = parseStringIngredient(ing));
+              } else {
+                ingName = ing.item || '';
+                ingAmt  = ing.amount || '';
+              }
+              if (ingName) addIngredient(ingName, ingAmt);
+            });
+          }
         } else {
           // No card — add dish name with portion as a line item
           const portion = item.portion || '';
