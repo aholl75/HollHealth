@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.43';
+const APP_VERSION = '1.5.44';
 const APP_CHANGELOG = [
+  { version: '1.5.44', date: '2026-07-11', notes: 'PDF grocery: added guaranteed fallback in buildGroceryFromPlan — if all card/ingredient logic adds nothing to ingMap for an item (silent failure), the item.name + item.portion is added directly. This prevents items like Apple from vanishing regardless of card state. Added console.log diagnostic output listing every item processed, whether a card was found, and whether the item was ultimately added — open browser DevTools > Console after clicking Download PDF to see the trace.' },
   { version: '1.5.43', date: '2026-07-11', notes: 'PDF grocery list accuracy pass (Phase 2): (1) Single-ingredient whole-food cards (apple, banana, sunflower seeds, etc.) now use item.portion from the plan instead of the card\'s ingredient quantity — fixes doubled quantities caused by 2-serving card data (apple was showing 10 medium instead of 5). (2) CAT_KEYS routing overhaul: moved oat milk/almond milk/coconut milk to top of Canned & Packaged so they don\'t mis-route to Grains via bare "oat"; removed "corn" from Produce (corn tortillas now correctly route to Grains via "tortilla"); replaced bare "egg" in Protein with "large egg"/"whole egg"/"eggs" to prevent false-positive on "veggie" substring; added "mixed nut" and "nut" to Nuts category so Mixed Nuts routes correctly; added "straw","chip","popcorn" to Pantry so Veggie Straws routes to Pantry instead of Protein.' },
   { version: '1.5.42', date: '2026-07-11', notes: 'PDF grocery list bug fixes: (1) Added parseStringIngredient() helper inside buildGroceryFromPlan() to correctly split legacy string-format recipe card ingredients (32 of 168 cards affected) into item name + amount — previously the whole string was used as the item name with "1 unit" quantity, causing items like "Apple" to appear as "apples 2 medium (3\\" dia) (364g)  1 unit". (2) Fixed parseQty() to handle mixed numbers like "1 1/2 oz" (previously lost the fractional part). (3) Added one-time migration to repair malformed cantaloupe card ingredient string "melon) (138g) melon) (276g)" → {item: "Cantaloupe", amount: "1 cup cubed (138g)"}.' },
   { version: '1.5.41', date: '2026-07-10', notes: 'Code review cleanup: removed redundant 65-item RECIPES constant (superseded by 168-card recipeLibrary); simplified allDisplayRecipes to build from recipeLibrary as single source of truth; removed RECIPES from autocomplete; renamed latestWeight to latestNoteWeight in buildPrompt for consistency with component naming; removed stale recipeForSlot comment; removed console.warn from recipe loop catch; collapsed triple blank lines.' },
@@ -766,6 +767,8 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   // D1+D4 both appear → ingredient from that day counts ×2 already if we walk all 7 days
   // So just walk days 1-7 as stored (D4-D6 are copies of D1-D3) — quantities naturally double for mirrored days
   const uniqueDays = weekPlan.slice(0, 7);
+  // Debug: track which items are processed (visible in browser console)
+  const _dbg = [];
 
   uniqueDays.forEach(day => {
     if (!day) return;
@@ -773,6 +776,7 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
       (meal.items || []).forEach(item => {
         const name = (item.name || '').trim();
         if (!name) return;
+        const ingMapSizeBefore = ingMap.size;
         const key = normKey(name);
         const card = recipeLibrary[key];
 
@@ -846,9 +850,23 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
           const portion = item.portion || '';
           addIngredient(name, portion);
         }
+
+        // Guaranteed fallback: if this item added nothing to ingMap (card lookup failed
+        // silently, or ingredient parsing produced no usable name), add item.name + portion directly.
+        // This ensures standalone snack items like Apple always appear even if card logic fails.
+        const ingMapSizeAfter = ingMap.size;
+        const nameKey = name.toLowerCase().trim();
+        const itemAdded = ingMapSizeAfter > ingMapSizeBefore || ingMap.has(nameKey) ||
+          ingMap.has((name + 's').toLowerCase()) || ingMap.has(name.toLowerCase().replace(/s$/, ''));
+        if (!itemAdded && item.portion) {
+          addIngredient(name, item.portion);
+        }
+        // Debug log
+        _dbg.push({name, portion: item.portion||'', card: !!(recipeLibrary && recipeLibrary[normKey(name)]), added: ingMap.size > ingMapSizeBefore || itemAdded});
       });
     });
   });
+  console.log('[HollHealth] buildGroceryFromPlan processed', _dbg.length, 'items:', _dbg.map(d => d.name + (d.card?' [card]':' [no card]') + (d.added?'':' ⚠MISSED')).join(', '));
 
   // Format each ingredient entry as a display string
   const formatEntry = (entry) => {
