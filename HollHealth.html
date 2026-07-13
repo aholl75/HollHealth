@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.51';
+const APP_VERSION = '1.5.52';
 const APP_CHANGELOG = [
+  { version: '1.5.52', date: '2026-07-13', notes: 'Unit consolidation post-processing pass added to buildGroceryFromPlan: (1) tsp→tbsp when both present (÷3) — olive oil "2 tsp + 7 tbsp" becomes "~8 tbsp"; sesame oil "4 tsp + 2 tbsp" becomes "~3.5 tbsp"; (2) tbsp→cup when both present (÷16) — salsa "4 tbsp + 0.5 cup" becomes "0.75 cup"; (3) medium→cup for produce when both present (1 medium onion/pepper≈1 cup) — onion "4 tbsp + 2 medium + 1 cup" becomes "4 tbsp + 3 cups"; (4) ct→medium when medium also present — banana "2.5 + 2 medium" merges to one medium total; (5) ct→cup for produce when cup present (1 bell pepper=1 cup). Also diagnosed recipe card serving size issue: live localStorage library card for Kale White Bean Soup was overwritten with AI batch version; the backup JSON has the correct single-serving card. Fix: restore from backup JSON to recover correct card quantities.' },
   { version: '1.5.51', date: '2026-07-13', notes: 'Recipe card serving size fix. Root cause: the PDF recipe pages were sourced from per-month AI-generated recipes (hn_recipes_m13), which were written as 4-serving batch recipes. The 168-card library (hn_recipe_library) has correct single-serving quantities but was not being used for PDF recipe pages. Two fixes: (1) Code — rdataFinal now prefers the library card over the per-month AI card when building PDF recipe pages; library cards have curated single-serving quantities while AI cards are often batch-scaled. (2) Prompt — added SINGLE_SERVING_RULE constant injected into all recipe-generating prompt modes (libpackage, fullpackage, fillcards, recipesonly) requiring all generated recipe cards to be written for exactly 1 person eating 1 meal, with ingredient quantities scaled to a single portion.' },
   { version: '1.5.50', date: '2026-07-13', notes: 'Five grocery fixes from v1.5.49 audit: (1) Dish names removed from grocery list — fallback entry no longer fires when a recipe card was found and expanded; dish ingredients are already in ingMap under their own keys. (2) Sunflower Seeds deduplication — isWholeFood now matches on shared leading word ("sunflower kernels" vs "sunflower seeds" both share "sunflower") and uses item.portion directly, eliminating the duplicate kernels/seeds entries. (3) Banana "2.5 + 2 medium" fixed — parseQty now strips trailing descriptor text after comma before parsing so "1/2, sliced" → qty=0.5, unit=ct; combined with banana merging into one accumulator gives clean total. (4) Chickpeas "2.5 cans" fixed — bean cup→can rounding changed from nearest-0.5 to ceiling (whole cans only). (5) Edamame split fixed — normalizeIngName strips "beans" suffix so "Edamame beans" and "Edamame" both key to "Edamame"; category override ensures all edamame routes to Protein & Beans regardless of frozen/shelled form.' },
   { version: '1.5.49', date: '2026-07-13', notes: 'Grocery unit fixes: (1) parseQty singularises all plural units — cups→cup, cans→can, tbsps→tbsp etc. — so cup+cups variants accumulate correctly instead of showing separately. (2) Bean/legume cup→can consolidation: when black beans, chickpeas, etc. appear in both cup and can measures across recipe cards, cups are converted to cans (÷1.5, rounded to 0.5) and merged — 3 cups + 2 cans becomes 4 cans. (3) formatEntry now pluralises countable units when qty > 1: 3 cup → 3 cups, 2 can → 2 cans.' },
@@ -920,18 +921,69 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     const cupSlot = entry.amounts.get('cup');
     const canSlot = entry.amounts.get('can');
     if (cupSlot && canSlot) {
-      // Convert cups to cans and merge
       canSlot.qty += cupSlot.qty / 1.5;
       entry.amounts.delete('cup');
     } else if (cupSlot && !canSlot) {
-      // Only cups — convert to cans
       entry.amounts.set('can', {qty: cupSlot.qty / 1.5, gram: 0, unit: 'can'});
       entry.amounts.delete('cup');
     }
-    // Round can quantities to nearest 0.5 for practicality
     const slot = entry.amounts.get('can');
-    if (slot) slot.qty = Math.ceil(slot.qty); // round UP to whole cans
+    if (slot) slot.qty = Math.ceil(slot.qty);
   });
+
+  // Post-processing: consolidate mixed volume units (tsp→tbsp→cup) and
+  // produce count→cup conversions so items don't show as "2 tsp + 7 tbsp" etc.
+  //
+  // Conversion rules (cooking standard):
+  //   3 tsp  = 1 tbsp
+  //   16 tbsp = 1 cup
+  // Produce count→cup (approximate; only applied when BOTH ct and cup exist):
+  //   1 bell pepper ≈ 1 cup
+  //   1 medium onion ≈ 1 cup
+  //   1 medium banana ≈ same unit (merge ct into medium directly)
+  //
+  // Strategy: for each ingMap entry, if multiple volume units exist,
+  // convert everything to the LARGEST unit present, then round sensibly.
+  const consolidateVolume = (entry) => {
+    const has = (u) => entry.amounts.has(u);
+    const get = (u) => entry.amounts.get(u);
+    const del = (u) => entry.amounts.delete(u);
+
+    // tsp → tbsp when tbsp also present
+    if (has('tsp') && has('tbsp')) {
+      get('tbsp').qty += get('tsp').qty / 3;
+      del('tsp');
+    }
+    // tbsp → cup when cup also present (16 tbsp = 1 cup)
+    if (has('tbsp') && has('cup')) {
+      get('cup').qty += get('tbsp').qty / 16;
+      del('tbsp');
+    }
+    // medium → cup when cup also present (1 medium onion/pepper ≈ 1 cup)
+    // Only apply for produce-type items (onion, pepper, tomato, etc.)
+    const nameL = entry.name.toLowerCase();
+    const isProduce = ['onion','pepper','tomato','zucchini','carrot','potato'].some(w => nameL.includes(w));
+    if (isProduce && has('medium') && has('cup')) {
+      get('cup').qty += get('medium').qty; // 1 medium ≈ 1 cup
+      del('medium');
+    }
+    // ct → medium when medium also present (for whole fruits/veg like banana)
+    // 1 ct = 1 of the item = 1 medium
+    if (has('ct') && has('medium')) {
+      get('medium').qty += get('ct').qty;
+      del('ct');
+    }
+    // ct → cup when cup also present and no medium (1 bell pepper = 1 cup)
+    if (isProduce && has('ct') && has('cup') && !has('medium')) {
+      get('cup').qty += get('ct').qty;
+      del('ct');
+    }
+    // Round quantities to avoid float drift (keep 2 decimal places max)
+    entry.amounts.forEach(slot => {
+      slot.qty = Math.round(slot.qty * 100) / 100;
+    });
+  };
+  ingMap.forEach(consolidateVolume);
 
   // Format a grocery entry as a display string.
   // 'ct' = bare count (no unit label). Countable units are pluralised when qty > 1.
