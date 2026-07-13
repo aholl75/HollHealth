@@ -201,8 +201,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.49';
+const APP_VERSION = '1.5.51';
 const APP_CHANGELOG = [
+  { version: '1.5.51', date: '2026-07-13', notes: 'Recipe card serving size fix. Root cause: the PDF recipe pages were sourced from per-month AI-generated recipes (hn_recipes_m13), which were written as 4-serving batch recipes. The 168-card library (hn_recipe_library) has correct single-serving quantities but was not being used for PDF recipe pages. Two fixes: (1) Code — rdataFinal now prefers the library card over the per-month AI card when building PDF recipe pages; library cards have curated single-serving quantities while AI cards are often batch-scaled. (2) Prompt — added SINGLE_SERVING_RULE constant injected into all recipe-generating prompt modes (libpackage, fullpackage, fillcards, recipesonly) requiring all generated recipe cards to be written for exactly 1 person eating 1 meal, with ingredient quantities scaled to a single portion.' },
+  { version: '1.5.50', date: '2026-07-13', notes: 'Five grocery fixes from v1.5.49 audit: (1) Dish names removed from grocery list — fallback entry no longer fires when a recipe card was found and expanded; dish ingredients are already in ingMap under their own keys. (2) Sunflower Seeds deduplication — isWholeFood now matches on shared leading word ("sunflower kernels" vs "sunflower seeds" both share "sunflower") and uses item.portion directly, eliminating the duplicate kernels/seeds entries. (3) Banana "2.5 + 2 medium" fixed — parseQty now strips trailing descriptor text after comma before parsing so "1/2, sliced" → qty=0.5, unit=ct; combined with banana merging into one accumulator gives clean total. (4) Chickpeas "2.5 cans" fixed — bean cup→can rounding changed from nearest-0.5 to ceiling (whole cans only). (5) Edamame split fixed — normalizeIngName strips "beans" suffix so "Edamame beans" and "Edamame" both key to "Edamame"; category override ensures all edamame routes to Protein & Beans regardless of frozen/shelled form.' },
   { version: '1.5.49', date: '2026-07-13', notes: 'Grocery unit fixes: (1) parseQty singularises all plural units — cups→cup, cans→can, tbsps→tbsp etc. — so cup+cups variants accumulate correctly instead of showing separately. (2) Bean/legume cup→can consolidation: when black beans, chickpeas, etc. appear in both cup and can measures across recipe cards, cups are converted to cans (÷1.5, rounded to 0.5) and merged — 3 cups + 2 cans becomes 4 cans. (3) formatEntry now pluralises countable units when qty > 1: 3 cup → 3 cups, 2 can → 2 cans.' },
   { version: '1.5.48', date: '2026-07-13', notes: 'Three grocery list fixes: (1) Corn tortillas normalizes to small vs regular; (2) Ground ginger/dried oregano route to Pantry via pre-Produce block; (3) normalizeIngName consolidated.' },
   { version: '1.5.47', date: '2026-07-13', notes: 'Two root-cause fixes identified via Grocery Debug Report. Bug A (Apple missing from grocery PDF): normalizeIngName() was preserving lowercase "apples" from string-format card ingredients; default .sort() is case-sensitive so lowercase items sorted after all Title Case entries, landing past the footer cutoff on the PDF page. Fixed by (1) adding first-letter capitalisation in normalizeIngName() and (2) switching all category sorts to case-insensitive localeCompare. Bug B (dish names appearing in grocery list): the guaranteed fallback was firing on repeat mirror days (D4=D1, D5=D2 etc.) when ingMap.size did not grow because existing entries were quantity-updated not inserted — causing dish names like "Almond Butter Oatmeal with Berries" to appear as grocery items. Fixed by checking ingMap.has() for the item key directly instead of comparing ingMap.size before/after.' },
@@ -559,6 +561,10 @@ const buildPrompt = (si, plans, prefs, notes) => {
   ].filter(Boolean).join(' ');
 
   const REC_FMT = `[{"name":"S","servingSize":"S","prepTime":"S","cookTime":"S","ingredients":[{"item":"S","amount":"S"}],"steps":["S"],"tip":"S"}]`;
+  // CRITICAL: All recipe cards must be SINGLE SERVING (for one person, one meal).
+  // Do NOT generate batch/family recipes. Ingredients and quantities must reflect
+  // exactly what one person cooks and eats in a single sitting.
+  const SINGLE_SERVING_RULE = 'RECIPE CARDS — SINGLE SERVING ONLY: Every recipe card must be written for exactly 1 person eating 1 meal. Do NOT write batch, family, or restaurant-style recipes. Ingredient quantities must match what one person cooks and eats in a single sitting — e.g. "1 cup broth" not "6 cups broth", "1/2 can beans" not "2 cans beans". The servingSize field must say "1 serving". If a dish naturally makes more (e.g. a pot of soup), scale the ingredients DOWN to one portion before writing the card.';
   const DAY_FMT = `{"dayNumber":N,"cycleType":"low|moderate|high","totalCalories":N,"macros":{"protein":N,"fat":N,"carbs":N,"fiber":N},"meals":[{"slot":"Breakfast|Lunch|Snacks|Dinner|Protein Supplement","totalCalories":N,"protein":N,"fat":N,"carbs":N,"items":[{"name":"S","calories":N,"protein":N,"fat":N,"carbs":N,"portion":"S"}]}]}`;
 
   if (si.mode === 'week')
@@ -663,18 +669,18 @@ const buildPrompt = (si, plans, prefs, notes) => {
 
     const snackRule = `SNACKS REQUIREMENT: Every day's Snacks slot must contain exactly 2-3 SEPARATE items (not one combined item). Each item must come from the Snack Options list above or be a simple whole food. List each snack item individually with its own name, calories, and macros — never combine them into a single entry.`;
 
-    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object, drawing primarily from the existing recipe library below.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\n\n${snackRule}\n\nAVOID LIST — do not use these ingredients in ANY recipe, including library dishes. If a dish's ingredients include any avoid-list item, skip it and choose another: ${avoidItems.join(', ')}.\n\nEXISTING RECIPE LIBRARY — pre-filtered to exclude avoid-list ingredients. Each entry shows: dish name — ingredients. Use dishes from this list as your primary source. For any new dish you introduce, ensure it contains no avoid-list ingredients and generate a full recipe card.\n${bfStr}${luStr}${diStr}${snStr}\n\nFor any dish chosen from the library, use its existing calorie and macro values. Return ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
+    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object, drawing primarily from the existing recipe library below.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\n\n${snackRule}\n\n${SINGLE_SERVING_RULE}\n\nAVOID LIST — do not use these ingredients in ANY recipe, including library dishes. If a dish's ingredients include any avoid-list item, skip it and choose another: ${avoidItems.join(', ')}.\n\nEXISTING RECIPE LIBRARY — pre-filtered to exclude avoid-list ingredients. Each entry shows: dish name — ingredients. Use dishes from this list as your primary source. For any new dish you introduce, ensure it contains no avoid-list ingredients and generate a full recipe card.\n${bfStr}${luStr}${diStr}${snStr}\n\nFor any dish chosen from the library, use its existing calorie and macro values. ${SINGLE_SERVING_RULE} Return ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
   }
   if (si.mode === 'fullpackage')
-    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR}\nReturn ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
+    return `Generate a complete Month ${M} nutrition package as a SINGLE JSON object.\n${DIET} Carb cycle: ${CYCLE_TGTS}. IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is a unique day. ${FAV_STR} ${SINGLE_SERVING_RULE}\nReturn ONLY this JSON structure (no markdown):\n{"plan":[${DAY_FMT}],"grocery":{"categories":[{"name":"S","items":["S"]}]},"recipes":${REC_FMT}}`;
   if (si.mode === 'fillcards') {
     const names = (si.missing||[]).map(r=>r.name);
-    return `Generate full recipe JSON for these ${names.length} program recipes. ${DIET} Return ONLY a JSON array (no markdown):\n${REC_FMT}\n\nRecipes needed:\n${names.join('\n')}`;
+    return `Generate full recipe JSON for these ${names.length} program recipes. ${DIET} ${SINGLE_SERVING_RULE} Return ONLY a JSON array (no markdown):\n${REC_FMT}\n\nRecipes needed:\n${names.join('\n')}`;
   }
   if (si.mode === 'bulkrecipes')
     return `Paste a JSON array of recipes to add to your permanent Recipe Library. Each recipe should follow this format:\n${REC_FMT}\nYou can paste recipes from any source — AI generated, nutritionist provided, or manually entered.`;
   if (si.mode === 'recipesonly')
-    return `Generate ONLY the recipes array for Month ${M}. ${DIET} Include one recipe per unique meal in the weekly plan. Return ONLY a JSON array (no markdown): ${REC_FMT}`;
+    return `Generate ONLY the recipes array for Month ${M}. ${DIET} ${SINGLE_SERVING_RULE} Include one recipe per unique meal in the weekly plan. Return ONLY a JSON array (no markdown): ${REC_FMT}`;
   if (si.mode === 'recipe')
     return `Give me a complete recipe for "${si.name}" (serving size: ${si.portion||'1 serving'}). Vegetarian, no meat or fish, use oat milk if milk is needed. Return ONLY JSON: {"name":"S","servingSize":"S","prepTime":"S","cookTime":"S","ingredients":[{"item":"S","amount":"S"}],"steps":["S"],"tips":"S"}`;
   if (si.mode === 'replacedish') {
@@ -728,6 +734,8 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     n = n.replace(MEAS_PAREN_RE, '').trim();
     // Strip trailing suffix words
     n = n.replace(PREP_SUFFIX_RE, '').trim();
+    // Normalise "Edamame beans" -> "Edamame" (same shopping item regardless of form)
+    n = n.replace(/^(Edamame)\s+beans?$/i, '$1');
     // Strip trailing orphan comma
     n = n.replace(/,\s*$/, '').trim();
     // Capitalise first letter (string-format card ingredients may be all-lowercase)
@@ -773,6 +781,8 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   // Quantity parser: handles mixed numbers "1 1/2 cup", fractions "1/2 cup", plain "2 tbsp"
   const parseQty = (amountStr) => {
     if (!amountStr) return {qty: 1, unit: 'ct', gram: null};
+    // Strip trailing descriptor text after comma: "1/2, sliced" -> "1/2", "2 cups, drained" -> "2 cups"
+    amountStr = amountStr.replace(/,.*$/, '').trim();
     const mixedMatch = amountStr.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)/);
     const fracMatch  = amountStr.match(/^(\d+)\s*\/\s*(\d+)/);
     const numMatch   = amountStr.match(/^(\d+(?:\.\d+)?)/);
@@ -805,7 +815,13 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     const key = displayName.toLowerCase().trim();
     // Skip non-shoppable items
     if (['water','black pepper','salt','ice','salt and pepper'].some(s => key === s)) return;
-    const category = forceCat || routeItem(rawName); // route on RAW name (preserves 'frozen' signal)
+    // Route on RAW name to preserve 'frozen' signal, then apply overrides for items
+    // that should always be in the same aisle regardless of preparation form.
+    const CATEGORY_OVERRIDE = {
+      'edamame': 'Protein & Beans',  // frozen or shelled — both in bean aisle
+    };
+    const normDisplayKey = displayName.toLowerCase().trim();
+    const category = forceCat || CATEGORY_OVERRIDE[normDisplayKey] || routeItem(rawName);
     if (!ingMap.has(key)) {
       ingMap.set(key, {name: displayName, amounts: new Map(), category});
     }
@@ -855,9 +871,8 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
         const card = recipeLibrary[key];
 
         if (card && card.ingredients && card.ingredients.length > 0) {
-          // Single-ingredient whole-food cards (apple, banana, sunflower seeds…):
-          // use item.portion from the plan — more accurate than the card's quantity
-          // (some legacy cards have doubled quantities from 2-serving imports).
+          // Single-ingredient whole-food cards (apple, banana, sunflower seeds...):
+          // use item.portion from the plan for accurate per-serving quantities.
           const isSingle = card.ingredients.length === 1;
           const si = isSingle
             ? (typeof card.ingredients[0] === 'string'
@@ -865,11 +880,16 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
                 : (card.ingredients[0].item || ''))
             : '';
           const siL = si.toLowerCase(), nameL = name.toLowerCase();
+          // Whole-food match: exact/plural, or shared significant leading word
+          // e.g. "sunflower kernels" vs "sunflower seeds" -> share "sunflower"
+          const leadWord = siL.split(' ')[0];
+          const sharedLead = leadWord && leadWord.length >= 4 && nameL.startsWith(leadWord);
           const isWholeFood = isSingle && (siL.includes(nameL) || nameL.includes(siL) ||
-            siL.replace(/s$/,'') === nameL.replace(/s$/,''));
+            siL.replace(/s$/,'') === nameL.replace(/s$/,'') || sharedLead);
 
           if (isWholeFood && item.portion) {
-            addIngredient(si || name, item.portion);
+            // Use plan's portion and item name directly (avoids card quantity errors)
+            addIngredient(name, item.portion);
           } else {
             card.ingredients.forEach(ing => {
               let ingName, ingAmt;
@@ -878,24 +898,13 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
               if (ingName) addIngredient(ingName, ingAmt);
             });
           }
+          // Card found and expanded: never add the dish name itself as a fallback entry.
         } else {
-          // No recipe card — add item name + plan portion directly
+          // No recipe card -- add item name + plan portion directly
           addIngredient(name, item.portion || '');
         }
 
-        // Fallback: only fires if this item has no representation in ingMap at all.
-        // Checks the normalized key and common singular/plural variants.
-        // Does NOT fire on repeat days (D4=D1 etc.) where the entry already exists
-        // and was just quantity-updated — that would insert dish names as grocery items.
-        const nameKey = name.toLowerCase().trim();
-        const normNameKey = normalizeIngName(name).toLowerCase().trim();
-        const alreadyPresent = ingMap.has(nameKey) || ingMap.has(normNameKey) ||
-          ingMap.has(nameKey + 's') || ingMap.has(nameKey.replace(/s$/,'')) ||
-          ingMap.has(normNameKey + 's') || ingMap.has(normNameKey.replace(/s$/,''));
-        if (!alreadyPresent && item.portion) addIngredient(name, item.portion);
-
-        _dbg.push({name, card: !!card, added: ingMap.has(nameKey) || ingMap.has(normNameKey) ||
-          ingMap.has(nameKey+'s') || ingMap.has(nameKey.replace(/s$/,''))});
+        _dbg.push({name, card: !!card});
       });
     });
   });
@@ -921,7 +930,7 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     }
     // Round can quantities to nearest 0.5 for practicality
     const slot = entry.amounts.get('can');
-    if (slot) slot.qty = Math.round(slot.qty * 2) / 2;
+    if (slot) slot.qty = Math.ceil(slot.qty); // round UP to whole cans
   });
 
   // Format a grocery entry as a display string.
@@ -2466,8 +2475,14 @@ function HollNutrition() {
                         if (!isDish(rawItemName)) return;
                         // Strip parentheticals like "(no cheese)" before matching
                         const itemNorm = normName(rawItemName.replace(/\([^)]*\)/g,''));
-                        // Try direct pool lookup first, then scan pool values by name
-                        let rec = recipePool[itemNorm];
+                        // Prefer the library card over the per-month AI card:
+                        // Library cards have curated single-serving quantities; AI-generated
+                        // per-month cards are often batch/4-serving recipes.
+                        let rec = recipeLibrary[itemNorm] || recipeLibrary[normName(rawItemName)];
+                        if (!rec) {
+                          // Fall back to per-month recipe pool
+                          rec = recipePool[itemNorm];
+                        }
                         if (!rec) {
                           // scan all pool values for a name match
                           rec = Object.values(recipePool).find(r => r && normName(r.name) === itemNorm);
