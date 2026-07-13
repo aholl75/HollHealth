@@ -201,8 +201,11 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.46';
+const APP_VERSION = '1.5.49';
 const APP_CHANGELOG = [
+  { version: '1.5.49', date: '2026-07-13', notes: 'Grocery unit fixes: (1) parseQty singularises all plural units — cups→cup, cans→can, tbsps→tbsp etc. — so cup+cups variants accumulate correctly instead of showing separately. (2) Bean/legume cup→can consolidation: when black beans, chickpeas, etc. appear in both cup and can measures across recipe cards, cups are converted to cans (÷1.5, rounded to 0.5) and merged — 3 cups + 2 cans becomes 4 cans. (3) formatEntry now pluralises countable units when qty > 1: 3 cup → 3 cups, 2 can → 2 cans.' },
+  { version: '1.5.48', date: '2026-07-13', notes: 'Three grocery list fixes: (1) Corn tortillas normalizes to small vs regular; (2) Ground ginger/dried oregano route to Pantry via pre-Produce block; (3) normalizeIngName consolidated.' },
+  { version: '1.5.47', date: '2026-07-13', notes: 'Two root-cause fixes identified via Grocery Debug Report. Bug A (Apple missing from grocery PDF): normalizeIngName() was preserving lowercase "apples" from string-format card ingredients; default .sort() is case-sensitive so lowercase items sorted after all Title Case entries, landing past the footer cutoff on the PDF page. Fixed by (1) adding first-letter capitalisation in normalizeIngName() and (2) switching all category sorts to case-insensitive localeCompare. Bug B (dish names appearing in grocery list): the guaranteed fallback was firing on repeat mirror days (D4=D1, D5=D2 etc.) when ingMap.size did not grow because existing entries were quantity-updated not inserted — causing dish names like "Almond Butter Oatmeal with Berries" to appear as grocery items. Fixed by checking ingMap.has() for the item key directly instead of comparing ingMap.size before/after.' },
   { version: '1.5.46', date: '2026-07-13', notes: 'Added 🔍 Grocery Debug Report button to Backup & Sync panel. Downloads a plain-text .txt file listing every meal item in the current month\'s plan with its normKey, recipe card match status (CARD FOUND / NO CARD), portion field, and all card ingredients. Designed for upload to chat on mobile where DevTools is unavailable.' },
   { version: '1.5.45', date: '2026-07-13', notes: 'PDF overhaul — grocery list and recipe cards. Grocery: (1) normalizeIngName() strips prep descriptors so "Bell pepper, diced" + "Bell pepper, sliced" aggregate to one "Bell pepper" entry; (2) unit="unit" replaced with ct, displayed as bare count ("Bell pepper  2" not "2 unit"); (3) CAT_KEYS reordered — Frozen first so frozen items always route correctly; beans/legumes before generic "canned" so canned beans stay in Protein & Beans; "oat milk"/"salsa"/"enchilada sauce" in Canned before bare words; "coleslaw"/"oregano" added to Produce/Pantry; (4) CAT_ORDER updated: Frozen placed after Produce; Pantry gets dried oregano. Recipe PDF: (5) DISH_RE expanded with salad, omelette, omelet, scramble, hash, skillet — fixes Veggie Omelette and Edamame and Chickpea Salad missing from recipe pages; (6) Protein Supplement slot no longer excluded from mealItemNames — Oat Milk Protein Shake recipe card now included.' },
   { version: '1.5.44', date: '2026-07-11', notes: 'PDF grocery: added guaranteed fallback in buildGroceryFromPlan — if all card/ingredient logic adds nothing to ingMap for an item (silent failure), the item.name + item.portion is added directly. This prevents items like Apple from vanishing regardless of card state. Added console.log diagnostic output listing every item processed, whether a card was found, and whether the item was ultimately added — open browser DevTools > Console after clicking Download PDF to see the trace.' },
@@ -702,27 +705,33 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
 
   // Strip preparation descriptors from ingredient names so variants aggregate together.
   // e.g. "Bell pepper, diced" + "Bell pepper, sliced" → both key to "Bell pepper"
-  //      "Broccoli florets" + "Broccoli, chopped"  → both key to "Broccoli"
-  //      "Edamame beans, frozen (thawed)" + "Edamame, shelled" → "Edamame"
+  //      "Edamame beans, frozen (thawed)" → "Edamame beans" (frozen routes via rawName)
   //      "Fresh ginger, grated" → "Ginger"
-  //      "Garlic, minced" → "Garlic"
   //      "Black beans, canned, drained and rinsed" → "Black beans"
-  // Rules: strip after comma; strip leading "Fresh " unless followed by herb; strip prep adjectives
-  const PREP_STRIP_RE = /,\s*(diced|sliced|chopped|minced|grated|cubed|mashed|baked|thawed|rinsed|drained(?:\s+and\s+rinsed)?|cooked|canned(?:[\s,].*)?|dry|dried|fresh|frozen|raw|roasted|unsalted|unsweetened|low.sodium|old.fashioned|roughly|shelled|shredded|crumbled|peeled|trimmed|halved|quartered|torn|roughly\s+chopped|finely\s+chopped|thinly\s+sliced|finely\s+diced)(\s*,.*)?$/i;
-  const PREP_PREFIX_RE = /^(fresh|frozen)\s+(?!mixed|herb|mint|basil|parsley|cilantro|dill|thyme|rosemary|sage|oregano)/i;
+  //      "Corn tortillas, small (6-inch)" → "Corn tortillas, small" (size kept, parens stripped)
+  //      "White beans (cannellini), cooked" → "White beans (cannellini)" (variety parens kept)
+  // PREP_STRIP_RE: strips ONLY preparation/state verbs after comma, not size qualifiers
+  const PREP_STRIP_RE = /,\s*(diced|sliced|chopped|minced|grated|cubed|mashed|baked|thawed|frozen|rinsed|drained(?:\s+and\s+rinsed)?|cooked|canned(?:[\s,].*)?|dry|dried|raw|unsalted|unsweetened|low.sodium|old.fashioned|roughly|shelled|shredded|crumbled|peeled|trimmed|halved|quartered|torn|roughly\s+chopped|finely\s+chopped|thinly\s+sliced|finely\s+diced)(\s*(?:\([^)]*\))?\s*(?:,.*)?)?$/i;
+  // Measurement/size parens at end: (6-inch), (3" dia), (25g), (120mL) — strip these
+  // Variety/descriptor parens mid-string: (cannellini), (thawed) after verb already stripped — keep
+  const MEAS_PAREN_RE = /\s*\(\s*[\d][^)]*\)\s*$|\s*\([^)]*(?:inch|oz\b|ml\b|cm\b|dia)\s*[^)]*\)\s*$/i;
   const PREP_SUFFIX_RE = /\s+(florets|pieces|wedges|cloves)$/i;
 
   const normalizeIngName = (rawName) => {
     if (!rawName) return rawName;
     let n = rawName.trim();
-    // Strip trailing parenthetical notes: "White beans (cannellini), cooked" → strip ", cooked" not the parens
+    // Strip prep verbs after comma (keeps size qualifiers like "small", "large", "mini")
     n = n.replace(PREP_STRIP_RE, '');
-    // Strip leading Fresh/Frozen qualifier (but keep "Frozen mixed berries" intact → handled by frozen routing)
-    n = n.replace(PREP_PREFIX_RE, '');
-    // Strip trailing descriptor words
+    // Strip leading "Fresh " unless it precedes a herb name
+    n = n.replace(/^[Ff]resh\s+(?!herb|mint|basil|parsley|cilantro|dill|thyme|rosemary|sage|oregano)/, '').trim();
+    // Strip trailing measurement/size parentheticals (6-inch), (25g) — but keep (cannellini)
+    n = n.replace(MEAS_PAREN_RE, '').trim();
+    // Strip trailing suffix words
     n = n.replace(PREP_SUFFIX_RE, '').trim();
-    // Strip trailing comma
+    // Strip trailing orphan comma
     n = n.replace(/,\s*$/, '').trim();
+    // Capitalise first letter (string-format card ingredients may be all-lowercase)
+    if (n.length > 0) n = n[0].toUpperCase() + n.slice(1);
     return n;
   };
 
@@ -738,6 +747,9 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     // Beans/legumes before generic 'canned' so canned beans stay in Protein
     {name:'Protein & Beans',     words:['large egg','whole egg','tofu','tempeh','chickpea','lentil','black bean','kidney bean','white bean','cannellini','refried bean','bean','edamame','sausage','burger','patty','meatball','crumble']},
     {name:'Canned & Packaged',   words:['canned','can ']},
+    // Ground/powdered spices must be checked BEFORE Produce to prevent e.g.
+    // "Ground ginger" routing to Produce via the 'ginger' keyword.
+    {name:'Pantry & Spices',     words:['ground ginger','ground cumin','ground coriander','ground cinnamon','ground turmeric','ground paprika','dried oregano','dried basil','dried thyme','dried parsley','dried rosemary','dried sage','dried dill','italian seasoning']},
     {name:'Produce',             words:['spinach','kale','arugula','lettuce','greens','broccoli','cauliflower','zucchini','pepper','onion','carrot','celery','coleslaw','cabbage','cucumber','potato','sweet potato','squash','asparagus','pea','leek','bok','tomato','beet','mushroom','ginger','garlic','parsley','cilantro','dill','oregano','apple','banana','pear','strawberr','blueberr','blackberr','raspberr','orange','grape','melon','berry','berries','lemon','lime','avocado','mango','fruit']},
     {name:'Grains & Bread',      words:['rice','oat','quinoa','bread','pasta','tortilla','flour','noodle','couscous','granola','cracker','pretzel','bagel','corn']},
     {name:'Nuts, Seeds & Nut Butters', words:['walnut','almond','pumpkin seed','sunflower','chia','flax','hemp','peanut','cashew','pecan','pistachio','mixed nut','seed','nut butter','tahini','almond butter','peanut butter','nut']},
@@ -770,13 +782,16 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
       : (numMatch ? parseFloat(numMatch[1]) : 1);
     const unitMatch = amountStr.match(/(\d+(?:\.\d+)?)\s+([a-zA-Z][a-zA-Z ]*?)(?:\s*\(|,|$)/);
     const rawUnit = unitMatch ? unitMatch[2].trim().toLowerCase() : '';
-    // Map verbose/ambiguous units to canonical forms; bare count → 'ct'
-    const unit = rawUnit === 'unit' || rawUnit === '' ? 'ct'
-      : rawUnit === 'can' || rawUnit === 'cans' ? 'can'
-      : rawUnit === 'bar' || rawUnit === 'bars' ? 'bar'
-      : rawUnit === 'slice' || rawUnit === 'slices' ? 'slice'
-      : rawUnit === 'clove' || rawUnit === 'cloves' ? 'clove'
-      : rawUnit;
+    // Normalise to singular canonical form so plural variants accumulate into one bucket.
+    // e.g. 'cups' → 'cup', 'cans' → 'can', 'tbsps' → 'tbsp', etc.
+    // Bare count ('unit', empty) → 'ct' for display as a plain number.
+    const singularise = (u) => u
+      .replace(/^cups?$/, 'cup').replace(/^tbsps?$/, 'tbsp').replace(/^tsps?$/, 'tsp')
+      .replace(/^ozs?$/, 'oz').replace(/^lbs?$/, 'lb')
+      .replace(/^cans?$/, 'can').replace(/^bars?$/, 'bar').replace(/^scoops?$/, 'scoop')
+      .replace(/^slices?$/, 'slice').replace(/^cloves?$/, 'clove').replace(/^stalks?$/, 'stalk')
+      .replace(/^pieces?$/, 'piece').replace(/^servings?$/, 'serving').replace(/^pinch(es)?$/, 'pinch');
+    const unit = (rawUnit === 'unit' || rawUnit === '') ? 'ct' : singularise(rawUnit);
     const gramMatch = amountStr.match(/\((\d+(?:\.\d+)?)g\)/);
     const gram = gramMatch ? parseFloat(gramMatch[1]) : null;
     return {qty, unit, gram};
@@ -868,32 +883,68 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
           addIngredient(name, item.portion || '');
         }
 
-        // Guaranteed fallback: if nothing was added (card logic silently failed),
-        // add item.name + portion directly so no plan item is ever lost.
+        // Fallback: only fires if this item has no representation in ingMap at all.
+        // Checks the normalized key and common singular/plural variants.
+        // Does NOT fire on repeat days (D4=D1 etc.) where the entry already exists
+        // and was just quantity-updated — that would insert dish names as grocery items.
         const nameKey = name.toLowerCase().trim();
-        const added = ingMap.size > ingMapSizeBefore ||
-          ingMap.has(nameKey) || ingMap.has(nameKey + 's') || ingMap.has(nameKey.replace(/s$/,''));
-        if (!added && item.portion) addIngredient(name, item.portion);
+        const normNameKey = normalizeIngName(name).toLowerCase().trim();
+        const alreadyPresent = ingMap.has(nameKey) || ingMap.has(normNameKey) ||
+          ingMap.has(nameKey + 's') || ingMap.has(nameKey.replace(/s$/,'')) ||
+          ingMap.has(normNameKey + 's') || ingMap.has(normNameKey.replace(/s$/,''));
+        if (!alreadyPresent && item.portion) addIngredient(name, item.portion);
 
-        _dbg.push({name, card: !!card, added: ingMap.size > ingMapSizeBefore || added});
+        _dbg.push({name, card: !!card, added: ingMap.has(nameKey) || ingMap.has(normNameKey) ||
+          ingMap.has(nameKey+'s') || ingMap.has(nameKey.replace(/s$/,''))});
       });
     });
   });
   console.log('[HollHealth] buildGroceryFromPlan:', _dbg.length, 'items processed.',
     _dbg.filter(d => !d.added).map(d => '⚠MISSED: ' + d.name).join(', ') || 'All items added ✓');
 
-  // Format a grocery entry as display string
-  // 'ct' unit = bare count — show just the number (e.g. "Bell pepper  2" not "2 unit")
+  // Post-processing: consolidate mixed cup+can entries for beans/legumes.
+  // Recipe cards vary between "1 can" and "1.5 cups cooked" for the same ingredient.
+  // At the store you always buy canned — convert cups to cans (1 can ≈ 1.5 cups drained).
+  const BEAN_RE = /\b(black beans?|white beans?|cannellini|kidney beans?|chickpeas?|garbanzo|pinto beans?|navy beans?|lentils?|refried beans?)\b/i;
+  ingMap.forEach((entry) => {
+    if (!BEAN_RE.test(entry.name)) return;
+    const cupSlot = entry.amounts.get('cup');
+    const canSlot = entry.amounts.get('can');
+    if (cupSlot && canSlot) {
+      // Convert cups to cans and merge
+      canSlot.qty += cupSlot.qty / 1.5;
+      entry.amounts.delete('cup');
+    } else if (cupSlot && !canSlot) {
+      // Only cups — convert to cans
+      entry.amounts.set('can', {qty: cupSlot.qty / 1.5, gram: 0, unit: 'can'});
+      entry.amounts.delete('cup');
+    }
+    // Round can quantities to nearest 0.5 for practicality
+    const slot = entry.amounts.get('can');
+    if (slot) slot.qty = Math.round(slot.qty * 2) / 2;
+  });
+
+  // Format a grocery entry as a display string.
+  // 'ct' = bare count (no unit label). Countable units are pluralised when qty > 1.
+  const pluralUnit = (unit, qty) => {
+    if (qty <= 1) return unit;
+    const PLURAL = {cup:'cups',tbsp:'tbsp',tsp:'tsp',oz:'oz',lb:'lb',
+      can:'cans',bar:'bars',scoop:'scoops',slice:'slices',clove:'cloves',
+      stalk:'stalks',piece:'pieces',serving:'servings',pinch:'pinches'};
+    return PLURAL[unit] || unit;
+  };
   const formatEntry = (entry) => {
     const parts = [];
     entry.amounts.forEach(({qty, gram, unit}) => {
-      const qtyStr = Number.isInteger(qty) ? qty : (Math.round(qty * 4) / 4).toFixed(2).replace(/\.?0+$/, '');
+      const qtyNum = Math.round(qty * 100) / 100; // avoid float drift
+      const qtyStr = Number.isInteger(qtyNum) ? qtyNum
+        : (Math.round(qtyNum * 4) / 4).toFixed(2).replace(/\.?0+$/, '');
       if (unit === 'ct') {
-        parts.push(`${qtyStr}`);               // bare count — no unit label
+        parts.push(`${qtyStr}`);
       } else if (gram > 0) {
-        parts.push(`${qtyStr} ${unit} (${Math.round(gram)}g)`);
+        parts.push(`${qtyStr} ${pluralUnit(unit, qtyNum)} (${Math.round(gram)}g)`);
       } else {
-        parts.push(`${qtyStr} ${unit}`);
+        parts.push(`${qtyStr} ${pluralUnit(unit, qtyNum)}`);
       }
     });
     return `${entry.name}  ${parts.join(' + ')}`;
@@ -912,11 +963,11 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   const categories = [];
   CAT_ORDER.forEach(name => {
     if (catMap.has(name)) {
-      categories.push({name, items: catMap.get(name).sort()});
+      categories.push({name, items: catMap.get(name).sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()))});
       catMap.delete(name);
     }
   });
-  catMap.forEach((items, name) => categories.push({name, items: items.sort()}));
+  catMap.forEach((items, name) => categories.push({name, items: items.sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()))}));
 
   return {categories, generatedFromPlan: true};
 };
