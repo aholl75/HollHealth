@@ -201,9 +201,11 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.53';
+const APP_VERSION = '1.5.55';
 const APP_CHANGELOG = [
-  { version: '1.5.53', date: '2026-07-14', notes: 'Library card migration: one-time patch applied on app load to overwrite the 12 M13 recipe cards that were overwritten with AI-generated batch quantities back to their correct single-serving amounts (confirmed from June 17 backup). Migration is idempotent — it checks a sentinel key (hn_lib_migration_m13) to skip on subsequent loads. In-app recipe card viewer confirmed to already prefer library cards over per-month AI data (openRecipe checks recipeLibrary first by normName key, then by full scan, before falling back to currentRecipes — same priority as PDF generator since v1.5.51). No viewer code change needed.' },
+  { version: '1.5.55', date: '2026-07-14', notes: 'Multi-user diet mode support. New Diet Mode toggle in Preferences (Vegetarian / Omnivore). Vegetarian (default): all existing behaviour unchanged — no meat, fish, shellfish, or alcohol. Omnivore: only alcohol is excluded by default; meat, fish, and shellfish are allowed and removed from the hardcoded NEVER list. All AI prompt templates (week, day, libpackage, fullpackage, recipe, replacedish, fillcards, swap suggestions) now read dietMode from prefs and inject the correct diet constraint string. isNever() and isDisliked() accept a dietMode parameter so the planner correctly flags only actually-disallowed items. The NEVER constant is split: NEVER_VEGETARIAN (full list) vs NEVER_ALWAYS (alcohol only, applies to all modes). Avoid list lock notice in Preferences UI updates to match the active mode. Health tab appointment suggestions updated to be diet-neutral. Each user\'s diet mode is stored in their own localStorage (hn_prefs) and never shared — Andrew\'s vegetarian setting and his son\'s omnivore setting coexist safely on separate devices.' },
+ notes: 'Root cause fix for nearly all remaining grocery quantity bugs: Unicode vulgar fraction characters (½ ¼ ¾ ⅛ ⅜ ⅙ ⅓ ¾ etc.) used in recipe card ingredient amounts were not parsed by parseQty — the regex only matched ASCII digit-slash fractions like 1/2. All unicode fractions now converted to decimal at the top of parseQty before any other processing. This fixes: Banana 7→3.5 medium, Bell pepper 7→3.25 cups, Carrots 3→1.25 cups, Celery 2→1 cup, Coleslaw mix 2→1 cup, Mini peppers 2→0.5 cups, Mixed berries 4→2 cups, Rolled oats 2→1 cup, Brown rice 5→3 cups, Black beans 4→2 cans, Chickpeas 3→2 cans, Edamame 2+2.5tbsp→0.5 cup+2.5tbsp, Onion 8tbsp+2→0.5 cup+8tbsp→consolidated, Sesame oil 4+2tbsp→~2.67tbsp, Olive oil 4tbsp+3→~5tbsp. Also fixes Protein powder deduplification: normalizeIngName now strips "plant-based " prefix so "Plant-based protein powder" and "Protein powder" resolve to the same key.' },
+ notes: 'Library card migration: one-time patch applied on app load to overwrite the 12 M13 recipe cards that were overwritten with AI-generated batch quantities back to their correct single-serving amounts (confirmed from June 17 backup). Migration is idempotent — it checks a sentinel key (hn_lib_migration_m13) to skip on subsequent loads. In-app recipe card viewer confirmed to already prefer library cards over per-month AI data (openRecipe checks recipeLibrary first by normName key, then by full scan, before falling back to currentRecipes — same priority as PDF generator since v1.5.51). No viewer code change needed.' },
   { version: '1.5.52', date: '2026-07-13', notes: 'Unit consolidation post-processing pass added to buildGroceryFromPlan: (1) tsp→tbsp when both present (÷3) — olive oil "2 tsp + 7 tbsp" becomes "~8 tbsp"; sesame oil "4 tsp + 2 tbsp" becomes "~3.5 tbsp"; (2) tbsp→cup when both present (÷16) — salsa "4 tbsp + 0.5 cup" becomes "0.75 cup"; (3) medium→cup for produce when both present (1 medium onion/pepper≈1 cup) — onion "4 tbsp + 2 medium + 1 cup" becomes "4 tbsp + 3 cups"; (4) ct→medium when medium also present — banana "2.5 + 2 medium" merges to one medium total; (5) ct→cup for produce when cup present (1 bell pepper=1 cup). Also diagnosed recipe card serving size issue: live localStorage library card for Kale White Bean Soup was overwritten with AI batch version; the backup JSON has the correct single-serving card. Fix: restore from backup JSON to recover correct card quantities.' },
   { version: '1.5.51', date: '2026-07-13', notes: 'Recipe card serving size fix. Root cause: the PDF recipe pages were sourced from per-month AI-generated recipes (hn_recipes_m13), which were written as 4-serving batch recipes. The 168-card library (hn_recipe_library) has correct single-serving quantities but was not being used for PDF recipe pages. Two fixes: (1) Code — rdataFinal now prefers the library card over the per-month AI card when building PDF recipe pages; library cards have curated single-serving quantities while AI cards are often batch-scaled. (2) Prompt — added SINGLE_SERVING_RULE constant injected into all recipe-generating prompt modes (libpackage, fullpackage, fillcards, recipesonly) requiring all generated recipe cards to be written for exactly 1 person eating 1 meal, with ingredient quantities scaled to a single portion.' },
   { version: '1.5.50', date: '2026-07-13', notes: 'Five grocery fixes from v1.5.49 audit: (1) Dish names removed from grocery list — fallback entry no longer fires when a recipe card was found and expanded; dish ingredients are already in ingMap under their own keys. (2) Sunflower Seeds deduplication — isWholeFood now matches on shared leading word ("sunflower kernels" vs "sunflower seeds" both share "sunflower") and uses item.portion directly, eliminating the duplicate kernels/seeds entries. (3) Banana "2.5 + 2 medium" fixed — parseQty now strips trailing descriptor text after comma before parsing so "1/2, sliced" → qty=0.5, unit=ct; combined with banana merging into one accumulator gives clean total. (4) Chickpeas "2.5 cans" fixed — bean cup→can rounding changed from nearest-0.5 to ceiling (whole cans only). (5) Edamame split fixed — normalizeIngName strips "beans" suffix so "Edamame beans" and "Edamame" both key to "Edamame"; category override ensures all edamame routes to Protein & Beans regardless of frozen/shelled form.' },
@@ -337,19 +339,25 @@ const normName = (s) => (s||'').toLowerCase().trim()
   .replace(/\s+/g,' ')
   .trim();
 
-// ─── NEVER list — hardcoded, never shown in UI, always injected into prompts ──
-const NEVER = [
+// ─── NEVER lists — hardcoded dietary exclusions ───────────────────────────────
+// NEVER_ALWAYS: excluded for ALL diet modes (alcohol is never a food ingredient)
+const NEVER_ALWAYS = [
+  'beer','wine','liquor','alcohol','spirits','cocktail',
+];
+// NEVER_VEGETARIAN: additionally excluded when dietMode === 'vegetarian' (default)
+const NEVER_VEGETARIAN = [
   'chicken','turkey','beef','pork','lamb','duck','veal','venison','bison',
   'bacon','ham','pepperoni','salami','chorizo','steak','meatball','meat',
   'fish','salmon','tuna','tilapia','cod','halibut','trout','sardine','anchovy',
   'shrimp','prawn','crab','lobster','scallop','clam','mussel','oyster',
   'seafood','fish sauce','worcestershire',
-  'beer','wine','liquor','alcohol','spirits','cocktail',
+  ...NEVER_ALWAYS,
 ];
-const isNever = (name) => {
+const isNever = (name, dietMode) => {
   const n = name.toLowerCase();
   if (/\b(vegan|plant.based|veggie|meatless|beyond|impossible)\b/.test(n)) return false;
-  return NEVER.some(d => n.includes(d));
+  const list = (dietMode === 'omnivore') ? NEVER_ALWAYS : NEVER_VEGETARIAN;
+  return list.some(d => n.includes(d));
 };
 
 // ─── Default editable AVOID list — personal dislikes, user can change ────────
@@ -369,12 +377,13 @@ const DEFAULT_AVOID = [
 
 // ─── Disliked check: NEVER + current user AVOID list ─────────────────────────
 // avoidList is passed in from state so it stays reactive
-const isDisliked = (name, avoidList) => {
+// dietMode: 'vegetarian' (default) or 'omnivore'
+const isDisliked = (name, avoidList, dietMode) => {
   const n = name.toLowerCase();
   if (/\b(vegan|plant.based|veggie|meatless|beyond|impossible)\b/.test(n)) return false;
   // Strip parenthetical clarifications like "(no cheese)" before checking
   const stripped = n.replace(/\([^)]*\)/g, '').trim();
-  if (isNever(stripped)) return true;
+  if (isNever(stripped, dietMode)) return true;
   return (avoidList || DEFAULT_AVOID).some(d => stripped.includes(d));
 };
 const MILK_RE = /\b(whole milk|cow milk|skim milk|2% milk|milk|almond milk|coconut milk|rice milk)\b/i;
@@ -449,9 +458,9 @@ const recalc = (day) => {
   };
   return day;
 };
-const countFlagged = (dayPlan, avoidList) => {
+const countFlagged = (dayPlan, avoidList, dietMode) => {
   if (!dayPlan) return 0;
-  return dayPlan.meals.reduce((s,m) => s + m.items.filter(i => isDisliked(i.name, avoidList)).length, 0);
+  return dayPlan.meals.reduce((s,m) => s + m.items.filter(i => isDisliked(i.name, avoidList, dietMode)).length, 0);
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -548,7 +557,11 @@ const buildPrompt = (si, plans, prefs, notes) => {
   // Build avoid clause from user's editable list + NEVER
   const avoidItems = [...((prefs||{}).avoidList || DEFAULT_AVOID)];
   const AVOID_STR = avoidItems.length ? `Never use: ${avoidItems.join(', ')}.` : '';
-  const DIET = `Vegetarian (eggs + dairy ok, NO meat/fish/seafood/alcohol). ${AVOID_STR} Use oat milk for all milk. Protein Supplement = oat milk shake (150cal 24p 3f 10c).${calcResult ? ` Goal: ${goalLabel} (target ~${baseCals} cal/day).` : ''}`;
+  const dietMode = (prefs||{}).dietMode || 'vegetarian';
+  const isVeg = dietMode === 'vegetarian';
+  const DIET = isVeg
+    ? `Vegetarian (eggs + dairy ok, NO meat/fish/seafood/alcohol). ${AVOID_STR} Use oat milk for all milk. Protein Supplement = oat milk shake (150cal 24p 3f 10c).${calcResult ? ` Goal: ${goalLabel} (target ~${baseCals} cal/day).` : ''}`
+    : `Omnivore (all proteins welcome — meat, fish, poultry, dairy, eggs — but NO alcohol). ${AVOID_STR} Protein Supplement = protein shake or bar (150cal 24p 3f 10c).${calcResult ? ` Goal: ${goalLabel} (target ~${baseCals} cal/day).` : ''}`;
 
   // Favorites + limits injection
   const always = ((prefs||{}).alwaysItems||[]);
@@ -570,11 +583,11 @@ const buildPrompt = (si, plans, prefs, notes) => {
   const DAY_FMT = `{"dayNumber":N,"cycleType":"low|moderate|high","totalCalories":N,"macros":{"protein":N,"fat":N,"carbs":N,"fiber":N},"meals":[{"slot":"Breakfast|Lunch|Snacks|Dinner|Protein Supplement","totalCalories":N,"protein":N,"fat":N,"carbs":N,"items":[{"name":"S","calories":N,"protein":N,"fat":N,"carbs":N,"portion":"S"}]}]}`;
 
   if (si.mode === 'week')
-    return `Generate a full 7-day vegetarian meal plan for Month ${M} using a 3-day carb cycle (${CYCLE_TGTS}). IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is unique. ${DIET} ${FAV_STR} Return ONLY a JSON array of 7 day objects: [${DAY_FMT}]`;
+    return `Generate a full 7-day ${isVeg ? 'vegetarian' : 'omnivore'} meal plan for Month ${M} using a 3-day carb cycle (${CYCLE_TGTS}). IMPORTANT: Days 4, 5, and 6 must be IDENTICAL to Days 1, 2, and 3 respectively — same meals, same items, same calories. Only Day 7 is unique. ${DIET} ${FAV_STR} Return ONLY a JSON array of 7 day objects: [${DAY_FMT}]`;
   if (si.mode === 'day') {
     const CT = ['','low','moderate','high','low','moderate','high','low'][D];
     const CAL = [0,lowCal,modCal,hiCal,lowCal,modCal,hiCal,lowCal][D];
-    return `Generate a vegetarian ${CT}-carb meal plan for Day ${D} of Month ${M}. Target ~${CAL} calories. ${DIET} ${FAV_STR} Return ONLY JSON: ${DAY_FMT}`;
+    return `Generate a ${isVeg ? 'vegetarian' : 'omnivore'} ${CT}-carb meal plan for Day ${D} of Month ${M}. Target ~${CAL} calories. ${DIET} ${FAV_STR} Return ONLY JSON: ${DAY_FMT}`;
   }
   if (si.mode === 'grocery') {
     const wk = (plans && plans[M]) || [];
@@ -684,14 +697,14 @@ const buildPrompt = (si, plans, prefs, notes) => {
   if (si.mode === 'recipesonly')
     return `Generate ONLY the recipes array for Month ${M}. ${DIET} ${SINGLE_SERVING_RULE} Include one recipe per unique meal in the weekly plan. Return ONLY a JSON array (no markdown): ${REC_FMT}`;
   if (si.mode === 'recipe')
-    return `Give me a complete recipe for "${si.name}" (serving size: ${si.portion||'1 serving'}). Vegetarian, no meat or fish, use oat milk if milk is needed. Return ONLY JSON: {"name":"S","servingSize":"S","prepTime":"S","cookTime":"S","ingredients":[{"item":"S","amount":"S"}],"steps":["S"],"tips":"S"}`;
+    return `Give me a complete recipe for "${si.name}" (serving size: ${si.portion||'1 serving'}). ${isVeg ? 'Vegetarian, no meat or fish, use oat milk if milk is needed.' : 'Omnivore recipe, no alcohol.'} Return ONLY JSON: {"name":"S","servingSize":"S","prepTime":"S","cookTime":"S","ingredients":[{"item":"S","amount":"S"}],"steps":["S"],"tips":"S"}`;
   if (si.mode === 'replacedish') {
     const CT = ['','low','moderate','high','low','moderate','high','low'][si.day] || 'low';
     const targetCal = si.mealCal || 600;
     const targetP = si.mealP || 30;
     const targetF = si.mealF || 20;
     const targetC = si.mealC || 40;
-    return `Generate a replacement ${si.slot} dish for Day ${si.day} of a vegetarian ${CT}-carb meal plan.\nTarget macros: ~${targetCal} cal, ~${targetP}g protein, ~${targetF}g fat, ~${targetC}g carbs.\n${DIET} ${FAV_STR}\nDo NOT use "${si.replacing}" — provide a completely different dish.\nReturn ONLY this JSON structure for a single meal slot:\n{"slot":"${si.slot}","totalCalories":N,"protein":N,"fat":N,"carbs":N,"items":[{"name":"S","calories":N,"protein":N,"fat":N,"carbs":N,"portion":"S"}]}\nAlso return a recipe card as a second JSON object on a new line:\n{"name":"S","servingSize":"S","prepTime":"S","cookTime":"S","ingredients":[{"item":"S","amount":"S"}],"steps":["S"],"tip":"S"}`;
+    return `Generate a replacement ${si.slot} dish for Day ${si.day} of a ${isVeg ? 'vegetarian' : 'omnivore'} ${CT}-carb meal plan.\nTarget macros: ~${targetCal} cal, ~${targetP}g protein, ~${targetF}g fat, ~${targetC}g carbs.\n${DIET} ${FAV_STR}\nDo NOT use "${si.replacing}" — provide a completely different dish.\nReturn ONLY this JSON structure for a single meal slot:\n{"slot":"${si.slot}","totalCalories":N,"protein":N,"fat":N,"carbs":N,"items":[{"name":"S","calories":N,"protein":N,"fat":N,"carbs":N,"portion":"S"}]}\nAlso return a recipe card as a second JSON object on a new line:\n{"name":"S","servingSize":"S","prepTime":"S","cookTime":"S","ingredients":[{"item":"S","amount":"S"}],"steps":["S"],"tip":"S"}`;
   }
   return '';
 };
@@ -738,6 +751,8 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     n = n.replace(PREP_SUFFIX_RE, '').trim();
     // Normalise "Edamame beans" -> "Edamame" (same shopping item regardless of form)
     n = n.replace(/^(Edamame)\s+beans?$/i, '$1');
+    // Normalise "Plant-based protein powder" -> "Protein powder" so shake and smoothie cards dedup
+    n = n.replace(/^[Pp]lant[- ]based\s+/i, '');
     // Strip trailing orphan comma
     n = n.replace(/,\s*$/, '').trim();
     // Capitalise first letter (string-format card ingredients may be all-lowercase)
@@ -780,9 +795,20 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   // Accumulate ingredients: normalizedKey → {displayName, amounts: Map<unit, {qty,gram}>, category}
   const ingMap = new Map();
 
-  // Quantity parser: handles mixed numbers "1 1/2 cup", fractions "1/2 cup", plain "2 tbsp"
+  // Quantity parser: handles mixed numbers "1 1/2 cup", fractions "1/2 cup", plain "2 tbsp",
+  // and Unicode vulgar fractions like ½ ¼ ¾ ⅛ ⅜ ⅙ ⅓ ⅔ ⅝ ⅞ etc.
   const parseQty = (amountStr) => {
     if (!amountStr) return {qty: 1, unit: 'ct', gram: null};
+    // Normalise Unicode vulgar fractions to ASCII decimal BEFORE any regex matching.
+    // This is the root cause of most grocery quantity bugs: ½ cup → 0.5 cup, ¾ cup → 0.75 cup, etc.
+    const UNICODE_FRACS = {
+      '½':'0.5','⅓':'0.333','⅔':'0.667','¼':'0.25','¾':'0.75',
+      '⅛':'0.125','⅜':'0.375','⅝':'0.625','⅞':'0.875',
+      '⅙':'0.167','⅚':'0.833','⅕':'0.2','⅖':'0.4','⅗':'0.6','⅘':'0.8',
+    };
+    Object.keys(UNICODE_FRACS).forEach(function(ch) {
+      amountStr = amountStr.split(ch).join(UNICODE_FRACS[ch]);
+    });
     // Strip trailing descriptor text after comma: "1/2, sliced" -> "1/2", "2 cups, drained" -> "2 cups"
     amountStr = amountStr.replace(/,.*$/, '').trim();
     const mixedMatch = amountStr.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)/);
@@ -1143,6 +1169,7 @@ function HollNutrition() {
     activity: 'light',
     goalWeight: '',
     programStart: '2025-07-07',
+    dietMode: 'vegetarian',  // 'vegetarian' | 'omnivore'
     avoidList: [...DEFAULT_AVOID],
     alwaysItems: [],
     preferItems: [],
@@ -2350,7 +2377,7 @@ function HollNutrition() {
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:10,marginBottom:14}}>
               {[
                 ['1','Select your month','Click a month button in the MONTH strip. M1–M9 are past months — selecting one shows the 📊 History view with macro targets and trends, locked by default. M10+ are current/future — selecting one shows the 📋 Planner. M10–M12 show projected targets (◈) until you enter real ones.','#3b82f6'],
-                ['2','Set up Preferences first','Go to ⚙️ Preferences before generating any plans. Enter your height, age, activity level, and goal. The tool calculates your calorie target automatically from your latest logged weight. Add foods to Always Include or Prefer Often, review your Avoid list, and set your preferred Theme and Layout.','#8b5cf6'],
+                ['2','Set up Preferences first','Go to ⚙️ Preferences before generating any plans. Choose your Diet Mode (🌱 Vegetarian or 🍖 Omnivore) — this controls which proteins appear in plans and how items are flagged. Then enter your height, age, activity level, and goal. The tool calculates your calorie target automatically from your latest logged weight. Add foods to Always Include or Prefer Often, review your Avoid list, and set your preferred Theme and Layout.','#8b5cf6'],
                 ['3','Macro targets for new months','For M10–M12, click + Enter Real Targets in the ◈ banner when your nutritionist provides them. For M13 and beyond, macros are automatically seeded from the prior month as a baseline — adjust them in the Planner if your goal changes. Days 4/5/6 always auto-mirror Days 1/2/3.','#6366f1'],
                 ['4','Generate a new month plan','In the Planner, click ✦ Build from Library to generate a plan using your existing 12-month recipe library — this is the preferred flow. Or use 🎲 Random Package from Claude to have Claude invent new dishes freely. Copy the prompt, paste into claude.ai, paste the JSON back, and click ✓ Import.','#10b981'],
                 ['5','Download your PDF','After importing, click ⬇ Download PDF in the Planner to generate the full package: Weekly Overview, Grocery List, Daily Breakouts, and Recipe pages. The Weekly Overview shows dish names as single checkboxes for easy tracking.','#f59e0b'],
@@ -2681,8 +2708,9 @@ function HollNutrition() {
                       if (!Object.keys(recipePool).length) { setErr('No recipes found for Month ' + mon + '. Use 📋 Reimport Recipes to add them.'); return; }
 
                       // Build avoid set for name filtering (NEVER + user avoid list)
+                      const neverList = (prefs.dietMode === 'omnivore') ? NEVER_ALWAYS : NEVER_VEGETARIAN;
                       const avoidSet = [
-                        ...NEVER,
+                        ...neverList,
                         ...(prefs.avoidList || DEFAULT_AVOID)
                       ].map(a => a.toLowerCase());
 
@@ -2953,7 +2981,7 @@ function HollNutrition() {
               {[1,2,3,4,5,6,7].map(d => {
                 const r = mData[d];
                 const has = !!plans[mon]?.[d-1];
-                const flags = countFlagged(plans[mon]?.[d-1], prefs.avoidList);
+                const flags = countFlagged(plans[mon]?.[d-1], prefs.avoidList, prefs.dietMode);
                 return (
                   <button key={d} onClick={() => setDay(d)} style={{
                     padding:'5px 13px',borderRadius:20,flexShrink:0,
@@ -3001,7 +3029,8 @@ function HollNutrition() {
 
                 {/* Disliked/auto-sub banner */}
                 {(() => {
-                  const flagged = curDay.meals.flatMap((m,mi) => m.items.flatMap((item,ii) => isDisliked(item.name, prefs.avoidList)?[{name:item.name,slot:m.slot,mi,ii}]:[]));
+                  const flagged = curDay.meals.flatMap((m,mi) => m.items.flatMap((item,ii) => isDisliked(item.name, prefs.avoidList, prefs.dietMode)?[{name:item.name,slot:m.slot,mi,ii}]:[]));
+
                   const autoCount = curDay.meals.flatMap(m=>m.items).filter(i=>i.autoSubbed).length;
                   if (!flagged.length && !autoCount) return null;
                   return (
@@ -3029,7 +3058,7 @@ function HollNutrition() {
                       <div style={{fontSize:11,color:'#9a9a8a'}}>P{meal.protein}g · F{meal.fat}g · C{meal.carbs}g</div>
                     </div>
                     {meal.items?.map((item,ii) => {
-                      const bad = isDisliked(item.name, prefs.avoidList);
+                      const bad = isDisliked(item.name, prefs.avoidList, prefs.dietMode);
                       const subbed = !!item.autoSubbed;
                       const isEditing = editItem && editItem.di===day-1 && editItem.mi===mi && editItem.ii===ii;
                       return (
@@ -3403,6 +3432,36 @@ function HollNutrition() {
               <h1 style={S.h1}>Preferences</h1>
               <p style={S.sub}>Your profile, dietary preferences, and favorite foods — used to personalise every generated meal plan.</p>
 
+              {/* ── Diet Mode ── */}
+              <div style={S.card}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:4}}>🥗 Diet Mode</div>
+                <div style={{fontSize:12,color:'#7a7a6a',marginBottom:14,lineHeight:1.6}}>
+                  Controls which proteins are allowed in generated meal plans and how the planner flags items.
+                  Each user's choice is stored locally on their own device — different devices can have different settings.
+                </div>
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  {[
+                    ['vegetarian','🌱 Vegetarian','Eggs and dairy OK. Meat, fish, shellfish, and alcohol are always excluded.','#1b3d2a','#edf7f0','#b6d9be'],
+                    ['omnivore','🍖 Omnivore','All proteins welcome — meat, fish, poultry, dairy, and eggs. Only alcohol is excluded.','#7c3d12','#fff7ed','#fed7aa'],
+                  ].map(([val,label,desc,textCol,bgCol,borderCol]) => {
+                    const active = (prefs.dietMode||'vegetarian') === val;
+                    return (
+                      <div key={val}
+                        onClick={() => savePrefs({...prefs, dietMode: val})}
+                        style={{flex:'1 1 200px',padding:'14px 16px',borderRadius:10,cursor:'pointer',
+                          border: active ? `2.5px solid ${borderCol}` : '2px solid #e5e7eb',
+                          background: active ? bgCol : '#faf8f4',
+                          boxShadow: active ? `0 0 0 3px ${borderCol}44` : 'none',
+                          transition:'all 0.15s'}}>
+                        <div style={{fontWeight:700,fontSize:14,color: active ? textCol : '#4a4a3a',marginBottom:4}}>{label}</div>
+                        <div style={{fontSize:11,color: active ? textCol : '#9a9a8a',lineHeight:1.5}}>{desc}</div>
+                        {active && <div style={{fontSize:10,fontWeight:700,color:textCol,marginTop:6}}>✓ ACTIVE</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* ── Profile & Calorie Target ── */}
               <div style={S.card}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:14}}>👤 Profile & Calorie Target</div>
@@ -3558,7 +3617,9 @@ function HollNutrition() {
                 <div style={{fontSize:12,color:'#7a7a6a',marginBottom:14,lineHeight:1.6}}>
                   Foods and ingredients you dislike or can't eat. These are excluded from all generated plans and flagged ⚠ in your planner.
                   <span style={{display:'block',marginTop:6,padding:'6px 10px',background:'#fef2f2',borderRadius:7,color:'#991b1b',fontSize:11,fontWeight:600}}>
-                    🔒 Meat, fish, shellfish, and alcohol are always excluded regardless of this list.
+                    🔒 {(prefs.dietMode||'vegetarian') === 'vegetarian'
+                      ? 'Meat, fish, shellfish, and alcohol are always excluded regardless of this list.'
+                      : 'Alcohol is always excluded regardless of this list. In Omnivore mode, meat and fish are permitted.'}
                   </span>
                 </div>
                 <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
@@ -3869,12 +3930,12 @@ function HollNutrition() {
                 <div style={{fontSize:12,color:'#555',lineHeight:1.9}}>
                   {[
                     ['🩺','Annual Physical','Every year — blood pressure, weight, general health review'],
-                    ['🧪','Blood Work / Labs','Every year — CBC, metabolic panel, lipids, A1C, vitamin D, B12 (especially important as a vegetarian)'],
+                    ['🧪','Blood Work / Labs','Every year — CBC, metabolic panel, lipids, A1C, vitamin D, B12'],
                     ['🦷','Dental Cleaning','Every 6 months — cleaning and oral cancer screening'],
                     ['👁','Eye Exam','Every 1–2 years — vision and glaucoma check'],
                     ['🔬','Dermatology Full-Body Scan','Every year — skin cancer screening, especially important with family history'],
                     ['🏥','Colonoscopy','Every 10 years starting at age 45 — earlier if family history of colorectal cancer'],
-                    ['❤️','Cardiovascular Screening','Every year — heart disease risk factors, especially relevant given vegetarian protein patterns'],
+                    ['❤️','Cardiovascular Screening','Every year — heart disease risk factors, blood pressure, cholesterol'],
                   ].map(([icon,name,note]) => (
                     <div key={name} style={{display:'flex',gap:10,marginBottom:6,alignItems:'flex-start'}}>
                       <span style={{fontSize:15,flexShrink:0,marginTop:1}}>{icon}</span>
@@ -4527,13 +4588,15 @@ function HollNutrition() {
                     AI alternatives with matching macros for <strong>{swap.item.name}</strong> ({swap.item.calories} cal · P:{swap.item.protein}g · F:{swap.item.fat}g · C:{swap.item.carbs}g).
                   </div>
                   {!swap.alts && (() => {
-                    const aiPrompt = `I need vegetarian swap suggestions for a meal item. Return ONLY a JSON array, no other text.
+                    const isVegSwap = (prefs.dietMode||'vegetarian') === 'vegetarian';
+                    const swapAvoidStr = (prefs.avoidList||DEFAULT_AVOID).slice(0,6).join(', ');
+                    const aiPrompt = `I need swap suggestions for a meal item. Return ONLY a JSON array, no other text.
 
 Item to replace: "${swap.item.name}"
 Slot: ${swap.slot}
 Target macros: ~${swap.item.calories} cal, P:${swap.item.protein}g, F:${swap.item.fat}g, C:${swap.item.carbs}g
 
-Rules: vegetarian only (eggs and dairy OK). No meat, fish, shellfish, or alcohol. Avoid: mushrooms, avocado, sriracha, mayo. Keep within ±20% of the target calories.
+Rules: ${isVegSwap ? 'Vegetarian only (eggs and dairy OK). No meat, fish, shellfish, or alcohol.' : 'Omnivore (all proteins welcome). No alcohol.'} Avoid: ${swapAvoidStr}. Keep within ±20% of the target calories.
 
 Return exactly 4 alternatives as a JSON array:
 [{"name":"...","portion":"...","calories":N,"protein":N,"fat":N,"carbs":N}, ...]`;
