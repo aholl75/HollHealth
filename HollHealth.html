@@ -201,9 +201,14 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.59';
+const APP_VERSION = '1.6.4';
 const APP_CHANGELOG = [
-  { version: '1.5.59', date: '2026-07-14', notes: 'Whole-fruit per-occasion buying rule. Replaces the v1.5.58 post-consolidation ceiling with a more accurate per-occasion rule applied in addIngredient: each time a whole fruit (banana, apple, orange, pear, mango, peach, plum, kiwi, lemon, lime, avocado, grapefruit, nectarine, apricot) appears in a recipe card or plan item at any quantity from 0 to 1 (including halves), it counts as 1 unit to buy. You cannot save half a banana from D2 breakfast to use on D3 — it will spoil. Banana therefore shows 7 (one per occasion) rather than 5 (ceiling of 4.5). Berries excluded as they are sold by the pint and used from the same container across multiple days without spoilage concern.' },
+  { version: '1.6.4', date: '2026-07-14', notes: 'Help content updated to match v1.6.0\u2013v1.6.3 features. Help step 10 (Back up and sync) rewritten to describe comprehensive export, auto-locking on import, and the new Import Library Only option for new users. Process flow cards updated: Generate a new month plan now lists firstName/programStart in Preferences setup; Backup & restore data expanded to 6 steps covering auto-locking and new-user library import; Add or view a recipe card corrected to reference Import Library Only instead of the legacy \u201c12-month backup JSON\u201d phrasing. Version numbering convention (X.Y.Z) added to handoff: X=major, Y=fix pack, Z=single fix. v1.5.60\u2013v1.5.64 retroactively renumbered to v1.6.0\u2013v1.6.4 to correctly reflect that multi-user support features constitute a minor release, not individual bug patches.' },
+  { version: '1.6.3', date: '2026-07-14', notes: 'Smart import locking and new-user library-only flow. Full import now computes the current month automatically from programStart + today using monDateRange, locks all prior months (true), sets the current month unlocked (false), and opens the app on the current month \u2014 ignoring whatever locked state was in the backup file. totalMon is set to the max of plan keys or the computed current month. A second \u201cImport Library Only\u201d file input is available for new users: imports only recipe_library and recipes_by_month, leaves all plans, macros, prefs, progress, and health untouched, and directs the user to Preferences to complete setup.' },
+  { version: '1.6.2', date: '2026-07-14', notes: 'Comprehensive backup/restore overhaul. Export now includes: all months of plans, grocery lists, custom targets, locked months, the 168-card recipe library, per-month recipe card arrays (hn_recipes_m1\u2026mN), all progress/weight entries, health appointments, full prefs object (name, height, age, goal weight, activity, goal, program start, diet mode, always/prefer/avoid/limit lists), dark mode, and layout mode. Import restores every field and writes per-month recipe arrays back to hn_recipes_m* keys. Confirmation summary lists plan count, card count, month recipe arrays, progress entries, health appointments, and theme. Legacy hn_* raw key format still supported for backward compatibility.' },
+  { version: '1.6.1', date: '2026-07-14', notes: 'Four multi-user and PDF fixes. (1) Grocery PDF section headers: orphan guard prevents a category header stranding at the bottom of a column with no items \u2014 header waits with its first item. When a category overflows to a new column or page, the header repeats with \u201c(cont.)\u201d. (2) New-user clean slate: default state for totalMon, mon, and lockedMonths no longer hard-codes M1\u201312 context. New users start at M1 with no months locked; existing users unaffected (stored hn_locked and hn_totmon load on init). (3) First name field added to Preferences \u2192 Profile card. (4) When firstName is set it appears in the top banner beside the version badge; hidden if blank.' },
+  { version: '1.6.0', date: '2026-07-14', notes: 'Multi-user support release. Whole-veggie cup-to-unit conversion pass added after consolidateVolume: bell pepper (and future veg: zucchini, squash, cucumber, onion, carrot, celery) accumulated in cups now convert to whole units via WHOLE_VEGGIE_UNITS lookup \u2014 e.g. 2.75 cups bell pepper \u2192 3 medium. Only applied when the item is stored purely in cups (no medium/ct already present). PDF grocery subtitle updated to note whole-fruits-per-occasion rule; Help step 6 updated with same explanation. Version previously tagged 1.5.60 \u2014 renumbered to 1.6.0 as the correct start of the multi-user feature set.' },
+  { version: '1.5.59', date: '2026-07-14', notes: 'Whole-fruit per-occasion buying rule. Replaces the v1.5.58 post-consolidation ceiling with a more accurate per-occasion rule applied in addIngredient: each time a whole fruit (banana, apple, orange, pear, mango, peach, plum, kiwi, lemon, lime, avocado, grapefruit, nectarine, apricot) appears in a recipe card or plan item at any quantity from 0 to 1 (including halves), it counts as 1 unit to buy. You cannot save half a banana from D2 breakfast to use on D3 \u2014 it will spoil. Banana therefore shows 7 (one per occasion) rather than 5 (ceiling of 4.5). Berries excluded as they are sold by the pint and used from the same container across multiple days without spoilage concern.' },
   { version: '1.5.58', date: '2026-07-14', notes: 'Whole-fruit ceiling rounding in grocery list. Fruits bought as discrete units (banana, apple, orange, pear, mango, peach, plum, kiwi, lemon, lime, avocado, grapefruit, nectarine, apricot) now have their medium-unit quantities ceiled to the nearest whole number after all consolidation runs. Banana 4.5 medium → 5 medium. Apple 5 medium stays 5. Applied as a post-consolidation pass in buildGroceryFromPlan so it works correctly after ct+medium merging.' },
   { version: '1.5.57', date: '2026-07-14', notes: 'Sweet Potato Black Bean Tacos card corrected: plan portion was 3 tacos but card servingSize said "2 tacos + side rice" with only 2 tortillas listed. Root cause: v1.5.53 migration restored the June 17 backup card which was scaled for 2 tacos, while the AI-generated plan correctly targets 3 tacos (592 cal). Card updated to servingSize="3 tacos + side rice" with all ingredients scaled x1.5: tortillas 2→3, black beans 3/4→1 cup, sweet potato 1→1-2 medium, spinach 1→1.5 cups, salsa 2→3 tbsp, olive oil 2 tsp→1 tbsp, brown rice 1/2→3/4 cup, chili powder and cumin 1/2→3/4 tsp each. Grocery list will now correctly show 12 corn tortillas (3x4 occurrences) instead of 8. No other M13 cards have a servingSize vs plan portion mismatch. The v1.5.53 migration sentinel (hn_lib_migration_m13) is cleared so the corrected card patches in on next load.' },
   { version: '1.5.56', date: '2026-07-14', notes: 'Grocery PDF page overflow fix. The grocery list used a single-page 4-column layout with a hard footer cutoff — any categories that did not fit were silently dropped. With the v1.5.54 unicode fraction fix producing correct per-ingredient quantities, the Produce column grew tall enough to push Spinach (5 cups) and Whole wheat toast (2 slices) past the page boundary. Fixed by replacing the hard-stop return with a page-break continuation: when any column item would exceed FOOTER_Y, a new landscape page is added, all 4 column Y positions reset to the top margin, and rendering continues from the new page.' },
@@ -1025,6 +1030,33 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   };
   ingMap.forEach(consolidateVolume);
 
+  // Whole-veggie unit conversion: convert cup-measured produce to whole units
+  // where that is more actionable at the store (e.g. "3 medium" vs "2.75 cups").
+  // Only applied when the ingredient is stored purely in cups (no medium/ct already present).
+  const WHOLE_VEGGIE_UNITS = {
+    'bell pepper': { cupsPerUnit: 1,    unit: 'medium' },
+    'zucchini':    { cupsPerUnit: 1.5,  unit: 'medium' },
+    'squash':      { cupsPerUnit: 1.5,  unit: 'medium' },
+    'cucumber':    { cupsPerUnit: 1.25, unit: 'medium' },
+    'onion':       { cupsPerUnit: 1,    unit: 'medium' },
+    'carrot':      { cupsPerUnit: 0.5,  unit: 'medium' },
+    'celery':      { cupsPerUnit: 0.5,  unit: 'stalk'  },
+  };
+  ingMap.forEach(entry => {
+    const nameL = entry.name.toLowerCase();
+    const vegMatch = Object.keys(WHOLE_VEGGIE_UNITS).find(v => nameL.includes(v));
+    if (!vegMatch) return;
+    const conv = WHOLE_VEGGIE_UNITS[vegMatch];
+    const hasCup = entry.amounts.has('cup');
+    const hasMed = entry.amounts.has('medium') || entry.amounts.has('ct') || entry.amounts.has(conv.unit);
+    if (hasCup && !hasMed) {
+      const cupQty = entry.amounts.get('cup').qty;
+      const wholeCount = Math.ceil(cupQty / conv.cupsPerUnit);
+      entry.amounts.delete('cup');
+      entry.amounts.set(conv.unit, { qty: wholeCount, gram: 0, unit: conv.unit });
+    }
+  });
+
   // Format a grocery entry as a display string.
   // 'ct' = bare count (no unit label). Countable units are pluralised when qty > 1.
   const pluralUnit = (unit, qty) => {
@@ -1143,7 +1175,7 @@ const gapFillGrocery = (grocData, weekPlan) => {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function HollNutrition() {
   const [tab,      setTab]      = useState('planner');
-  const [mon,      setMon]      = useState(10);
+  const [mon,      setMon]      = useState(1);
   const [day,      setDay]      = useState(1);
   const [plans,    setPlans]    = useState({});
   const [swap,     setSwap]     = useState(null);
@@ -1158,7 +1190,7 @@ function HollNutrition() {
   const [showChangelog, setShowChangelog] = useState(false);
   const [showEditT,setShowEditT]= useState(false);
   const [editForm, setEditForm] = useState({});
-  const [totalMon, setTotalMon] = useState(12);
+  const [totalMon, setTotalMon] = useState(1);
   const [rfilt,    setRfilt]    = useState('');
   const [rsort,    setRsort]    = useState('name');
   const [err,      setErr]      = useState(null);
@@ -1172,10 +1204,11 @@ function HollNutrition() {
   const [savedRecipes, setSavedRecipes] = useState({});
   const [currentRecipes,  setCurrentRecipes]  = useState([]); // most recently imported recipe array
   const [recipeLibrary,   setRecipeLibrary]   = useState({}); // global {name: recipeObj} across all months
-  const [lockedMonths,  setLockedMonths]  = useState({1:true,2:true,3:true,4:true,5:true,6:true,7:true,8:true,9:true});
+  const [lockedMonths,  setLockedMonths]  = useState({});
 
   // ── Preferences state ────────────────────────────────────────────────────────
   const [prefs, setPrefs] = useState({
+    firstName: '',
     height: 67,
     age: 55,
     goal: 'loss',
@@ -1222,11 +1255,11 @@ function HollNutrition() {
       try { const r = LS.get('hn_customt'); if(r) setCustomT(JSON.parse(r.value));} catch(e){}
       try { const r = LS.get('hn_totmon');  if(r) setTotalMon(+r.value);          } catch(e){}
       try { const r = LS.get('hn_mon');     if(r) setMon(+r.value);               } catch(e){}
-      // Load locked months — merge with M1-M9 defaults so past months start locked
-      // Explicit unlocks of past months are stored as `false` (not deleted) to survive reloads
+      // Load locked months — if stored, use as-is (explicit user locks/unlocks).
+      // New users with no stored value start with {} — no months locked by default.
+      // Andrew's existing data already has hn_locked stored, so this is backward-compatible.
       try { const r = LS.get('hn_locked'); if(r) {
-        const stored = JSON.parse(r.value);
-        setLockedMonths({1:true,2:true,3:true,4:true,5:true,6:true,7:true,8:true,9:true, ...stored});
+        setLockedMonths(JSON.parse(r.value));
       }} catch(e){}
       // Load savedRecipes map
       try { const r = LS.get('hn_recipes'); if(r) setSavedRecipes(JSON.parse(r.value)); } catch(e){}
@@ -2000,7 +2033,7 @@ function HollNutrition() {
     // PAGE 2 — Grocery List
     // =========================================================
     newPage();
-    y = bigHeader('Grocery List','Month '+monthNum+'  |  Derived from your actual meal plan (quantities included)');
+    y = bigHeader('Grocery List','Month '+monthNum+'  |  Derived from your actual meal plan (quantities included; whole fruits counted per occasion)');
 
     // Always derive grocery from the actual plan + recipe cards so swaps are reflected
     // and quantities are accurate. Fall back to stored groceryData only if plan is empty.
@@ -2026,54 +2059,62 @@ function HollNutrition() {
       var gcXs = [PM, PM+gcW+gGAP, PM+(gcW+gGAP)*2, PM+(gcW+gGAP)*3];
       var gcYs = [y, y, y, y];
 
-      gcats.forEach(function(cat) {
-        // Find shortest column that has room for at least the header
-        var minY = Math.min(...gcYs);
-        var ci = gcYs.indexOf(minY);
-        var gcx = gcXs[ci], gcy = gcYs[ci];
-
-        // If the header alone won't fit in any column, start a new page
-        if (gcy + gHH > FOOTER_Y) {
-          // Check if ALL columns are full
-          var allFull = gcYs.every(function(yy){ return yy + gHH > FOOTER_Y; });
-          if (allFull) {
-            doc.addPage('a4','landscape');
-            gcYs = [PM, PM, PM, PM];
-            // Recalculate starting y for new page (no big header — use top margin)
-            y = PM + 4;
-            gcYs = [y, y, y, y];
-          }
-          // Re-pick shortest column after reset
-          minY = Math.min(...gcYs);
-          ci = gcYs.indexOf(minY);
-          gcx = gcXs[ci]; gcy = gcYs[ci];
-        }
-
-        // Category header (sage green background)
+      // drawCatHeader: renders the sage-green section header at current column position
+      var drawCatHeader = function(name, cx, cy) {
         doc.setFillColor(...LG);
-        doc.roundedRect(gcx, gcy, gcW, gHH, 1, 1, 'F');
+        doc.roundedRect(cx, cy, gcW, gHH, 1, 1, 'F');
         doc.setTextColor(...G);
         doc.setFont('helvetica','bold');
         doc.setFontSize(gFS + 0.5);
-        doc.text(cat.name, gcx+2, gcy + gHH/2 + (gFS+0.5)*0.35);
-        gcy += gHH + 0.5;
+        doc.text(name, cx+2, cy + gHH/2 + (gFS+0.5)*0.35);
+        return cy + gHH + 0.5;
+      };
 
-        // Items — with per-item page-break support
+      // pickColumn: choose the shortest column; if it (+ required height) exceeds
+      // FOOTER_Y in ALL columns, add a new page and reset all column cursors.
+      var pickColumn = function(neededH) {
+        var minY = Math.min(...gcYs);
+        var ci   = gcYs.indexOf(minY);
+        if (gcYs[ci] + neededH > FOOTER_Y) {
+          var allFull = gcYs.every(function(yy){ return yy + neededH > FOOTER_Y; });
+          if (allFull) {
+            doc.addPage('a4','landscape');
+            var ny = PM + 4;
+            gcYs = [ny, ny, ny, ny];
+          }
+          minY = Math.min(...gcYs);
+          ci   = gcYs.indexOf(minY);
+        }
+        return ci;
+      };
+
+      gcats.forEach(function(cat) {
+        var items = cat.items || [];
+        if (!items.length) return;
+
+        // Orphan guard: header must fit with at least one item below it.
+        // Reserve space for header + 1 item before committing to a column.
+        var ci  = pickColumn(gHH + gLH);
+        var gcx = gcXs[ci];
+        var gcy = gcYs[ci];
+
+        // Draw header
+        gcy = drawCatHeader(cat.name, gcx, gcy);
+
+        // Items — with per-item overflow that repeats the section header on continuation
         doc.setFont('helvetica','normal');
         doc.setFontSize(gFS);
-        (cat.items||[]).forEach(function(item, ii) {
+        items.forEach(function(item, ii) {
           if (gcy + gLH > FOOTER_Y) {
-            // This column is full — move to next column, or new page if all full
+            // Current column is full — save its cursor and pick a new slot
             gcYs[ci] = gcy;
-            var nextAllFull = gcYs.every(function(yy){ return yy + gLH > FOOTER_Y; });
-            if (nextAllFull) {
-              doc.addPage('a4','landscape');
-              y = PM + 4;
-              gcYs = [y, y, y, y];
-            }
-            minY = Math.min(...gcYs);
-            ci = gcYs.indexOf(minY);
-            gcx = gcXs[ci]; gcy = gcYs[ci];
+            ci  = pickColumn(gHH + gLH); // reserve room for repeated header + item
+            gcx = gcXs[ci];
+            gcy = gcYs[ci];
+            // Repeat section header so the shopper knows which category continues
+            gcy = drawCatHeader(cat.name + ' (cont.)', gcx, gcy);
+            doc.setFont('helvetica','normal');
+            doc.setFontSize(gFS);
           }
           doc.setFillColor(ii%2===0?250:255, ii%2===0?249:255, ii%2===0?246:255);
           doc.rect(gcx, gcy - 2, gcW, gLH, 'F');
@@ -2368,6 +2409,7 @@ function HollNutrition() {
         <div style={{display:'flex',alignItems:'baseline',gap:7}}>
           <div style={S.logo}>🌿 Holl:Health</div>
           <span style={{fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.45)',letterSpacing:'0.3px',paddingBottom:1}}>v{APP_VERSION}</span>
+          {prefs.firstName ? <span style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.55)',letterSpacing:'0.2px',paddingBottom:1}}>{prefs.firstName}</span> : null}
         </div>
         <nav className="hh-nav-tabs" style={{display:'flex',gap:2}}>
           {[['planner', mon <= 9 ? '📊 History' : '📋 Planner'],['recipes','🍽️ Recipes'],['preferences','⚙️ Preferences'],['progress','📓 Progress'],['health','🏥 Health']].map(([id,lbl]) => (
@@ -2426,11 +2468,11 @@ function HollNutrition() {
                 ['3','Macro targets for new months','For M10–M12, click + Enter Real Targets in the ◈ banner when your nutritionist provides them. For M13 and beyond, macros are automatically seeded from the prior month as a baseline — adjust them in the Planner if your goal changes. Days 4/5/6 always auto-mirror Days 1/2/3.','#6366f1'],
                 ['4','Generate a new month plan','In the Planner, click ✦ Build from Library to generate a plan using your existing 12-month recipe library — this is the preferred flow. Or use 🎲 Random Package from Claude to have Claude invent new dishes freely. Copy the prompt, paste into claude.ai, paste the JSON back, and click ✓ Import.','#10b981'],
                 ['5','Download your PDF','After importing, click ⬇ Download PDF in the Planner to generate the full package: Weekly Overview, Grocery List, Daily Breakouts, and Recipe pages. The Weekly Overview shows dish names as single checkboxes for easy tracking.','#f59e0b'],
-                ['6','Review your grocery list','The Grocery List appears at the bottom of the Planner tab. Check items off as you shop. It also prints on Page 2 of the PDF.','#ec4899'],
+                ['6','Review your grocery list','The Grocery List appears at the bottom of the Planner tab. Check items off as you shop. It also prints on Page 2 of the PDF. Note: whole fruits (banana, apple, etc.) are counted per occasion — each appearance in a recipe card counts as 1 to buy, regardless of whether the card says ½ or 1, because you can\u2019t save half a banana between days.','#ec4899'],
                 ['7','Import parts separately','Use 📋 Reimport Week Plan or 📋 Reimport Recipes in the Planner to update just one section. Use 📋 Regenerate Day N to replace a single day. Use 📋 Import Grocery List to update the grocery list independently.','#f97316'],
                 ['8','Swap or edit a meal item','In the Planner, click ↔ Swap on any food item to open the swap panel. 📖 Food Swap Bible shows pre-defined substitutions. ✨ AI Suggestions generates macro-matched alternatives. Click ✏️ Edit to correct a name, calorie value, or macro — totals recalculate automatically.','#f97316'],
                 ['9','Lock and unlock months','Past months (M1–M9) are locked by default. Current and future months can be locked via 🔓 Lock Month in the Planner once a plan is complete. Locked months are protected from accidental edits.','#5a3e9a'],
-                ['10','Back up and sync','Click 💾 Backup in the header to download all your data as a HollHealth-backup-[date].json file. To sync between devices, import that file on the other device via the same Backup panel.','#0891b2'],
+                ['10','Back up and sync','Click 💾 Backup in the header to download a complete backup: all months of plans, recipe library, progress entries, health appointments, and every preference. To restore on any device: 💾 Backup → ⬆ Choose File. Prior months are locked automatically based on today and your program start date. New users can use 📚 Import Library Only to get the recipe cards without inheriting another user\'s plans or preferences.','#0891b2'],
                 ['11','Log your weekly weight','Go to 📓 Progress. Enter date and weight and click + Save Entry. Use ✏️ Edit on any entry to correct a typo. Entries power the automatic calorie calculation in Preferences and the weight trend chart.','#1b3d2a'],
                 ['12','Track health appointments','Go to 🏥 Health. Log your last visit date for each appointment type and click 📅 Remind Me to download a .ics calendar reminder for Outlook or Google Calendar. The summary strip shows overdue and upcoming items at a glance.','#dc2626'],
               ].map(([n,title,desc,color]) => (
@@ -2464,13 +2506,13 @@ function HollNutrition() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 {[
                   ['🆕 Generate a new month plan',
-                   '1. Set up ⚙️ Preferences (height, age, goal, avoid/limit lists)\n2. In 📋 Planner, select the new month\n3. Click ✦ Build from Library (preferred) or 🎲 Random Package from Claude\n4. Copy the prompt → paste into claude.ai\n5. Copy the JSON response → paste back → ✓ Import\n6. Review the week, swap any items, then 🔒 Lock Month'],
+                   '1. Set up ⚙️ Preferences (name, height, age, goal, avoid/limit lists, program start date)\n2. In 📋 Planner, select the new month\n3. Click ✦ Build from Library (preferred) or 🎲 Random Package from Claude\n4. Copy the prompt → paste into claude.ai\n5. Copy the JSON response → paste back → ✓ Import\n6. Review the week, swap any items, then 🔒 Lock Month'],
                   ['🔄 Swap a meal item',
                    '1. In 📋 Planner, find the item and click ↔ Swap\n2. Use 📖 Swap Bible tabs for quick alternatives\n3. Or use ✨ AI Suggestions: copy prompt → claude.ai → paste JSON → ✓ Use\n4. Click a card to apply the swap (mirrors to Day +3 automatically)'],
                   ['💾 Backup & restore data',
-                   '1. Click 💾 Backup in the header\n2. ⬇ Download Backup saves everything (plans, recipes, settings)\n3. To restore: 💾 Backup → import the .json file\n4. Back up after every new month plan or major change'],
+                   '1. Click 💾 Backup in the header → ⬇ Download Backup\n2. Saves everything: all months of plans, recipes, progress, health, and all preferences\n3. To restore on any device: 💾 Backup → ⬆ Choose File → select the .json file\n4. Prior months are locked automatically from your program start date — current month stays open\n5. New user on a shared app? Use 📚 Import Library Only to get recipes without another user\'s data\n6. Back up after every new month plan or major change'],
                   ['📖 Add or view a recipe card',
-                   '1. Go to 🍽️ Recipes tab\n2. Click any card tile to view ingredients and steps\n3. Missing a card? Use the Backup panel → import the 12-month backup JSON\n4. New recipes from ✦ Build from Library or 🎲 Random Package imports auto-populate the library\n5. Add your own recipes via 📖 Recipes → Add Recipes to Library'],
+                   '1. Go to 🍽️ Recipes tab\n2. Click any card tile to view ingredients and steps\n3. Missing a card? Use 💾 Backup → 📚 Import Library Only with any backup file\n4. New recipes from ✦ Build from Library or 🎲 Random Package auto-populate the library\n5. Add your own recipes via 📖 Recipes → Add Recipes to Library'],
                 ].map(([title, steps]) => (
                   <div key={title} style={{padding:'10px 14px',background:DK?'#112218':'#fff',borderRadius:9,border:'1px solid #d4ead9'}}>
                     <div style={{fontSize:12,fontWeight:700,color:DK?'#a3c4a8':'#1b3d2a',marginBottom:6}}>{title}</div>
@@ -3510,6 +3552,13 @@ function HollNutrition() {
               {/* ── Profile & Calorie Target ── */}
               <div style={S.card}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:14}}>👤 Profile & Calorie Target</div>
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:10,fontWeight:700,color:'#9a9a8a',display:'block',marginBottom:4,letterSpacing:'0.5px'}}>FIRST NAME</label>
+                  <input type="text" maxLength={40} value={prefs.firstName||''} style={{...S.inp,maxWidth:220}}
+                    placeholder="e.g. Andrew"
+                    onChange={e => savePrefs({...prefs, firstName:e.target.value.trim()})}/>
+                  <div style={{fontSize:10,color:'#b0a898',marginTop:3}}>Shown in the top banner when set.</div>
+                </div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:16}}>
                   {[
                     ['Height (inches)', 'height', 'number', 60, 84],
@@ -4367,18 +4416,36 @@ function HollNutrition() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div style={{padding:'18px',background:'#edf7f0',borderRadius:12,border:'1px solid #b6d9be'}}>
                   <div style={{fontWeight:700,fontSize:14,marginBottom:6,color:'#1b3d2a'}}>⬇ Export</div>
-                  <div style={{fontSize:12,color:'#5a8e6a',marginBottom:14,lineHeight:1.6}}>Download all your plans, progress, and settings as a backup file.</div>
+                  <div style={{fontSize:12,color:'#5a8e6a',marginBottom:14,lineHeight:1.6}}>Download all plans, recipes, progress, health data, and settings as a complete backup file.</div>
                   <button style={{...S.btn(),width:'100%'}}
-                    title="Download all plans, progress notes, grocery lists, and settings as a dated JSON file"
+                    title="Download a complete backup: all months of plans, recipe library, per-month recipe cards, grocery lists, progress log, health appointments, preferences, and display settings"
                     onClick={() => {
+                    // Collect per-month recipe arrays hn_recipes_m1 … hn_recipes_mN
+                    const recipesByMonth = {};
+                    for (let m = 1; m <= totalMon; m++) {
+                      try { const rr = LS.get('hn_recipes_m'+m); if(rr) recipesByMonth[m] = JSON.parse(rr.value); } catch(e){}
+                    }
                     const data = {
-                      plans: plans, notes: notes, groc: groc,
-                      customT: customT, totalMon: totalMon,
-                      recipe_library: recipeLibrary,
-                      locked: JSON.parse(LS.get('hn_locked')?.value || '{}'),
-                      prefs: prefs,
+                      _version: APP_VERSION,
+                      _exportDate: new Date().toISOString(),
+                      // Plans & grocery
+                      plans: plans,
+                      groc: groc,
+                      customT: customT,
+                      totalMon: totalMon,
                       mon: mon,
-                      exportDate: new Date().toISOString(),
+                      locked: JSON.parse(LS.get('hn_locked')?.value || '{}'),
+                      // Recipes
+                      recipe_library: recipeLibrary,
+                      recipes_by_month: recipesByMonth,
+                      // Progress & health
+                      notes: notes,
+                      health: health,
+                      // Preferences (all fields)
+                      prefs: prefs,
+                      // Display
+                      darkMode: darkMode,
+                      layoutMode: layoutMode,
                     };
                     const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
                     const url = URL.createObjectURL(blob);
@@ -4391,9 +4458,11 @@ function HollNutrition() {
                 </div>
                 <div style={{padding:'18px',background:'#eff6ff',borderRadius:12,border:'1px solid #bfdbfe'}}>
                   <div style={{fontWeight:700,fontSize:14,marginBottom:6,color:'#1e40af'}}>⬆ Import</div>
-                  <div style={{fontSize:12,color:'#3b82f6',marginBottom:14,lineHeight:1.6}}>Restore from a backup file. This will replace your current data.</div>
-                  <label title="Select a previously downloaded backup JSON file to restore all your data — this replaces current data"
-                    style={{...S.btn('out'),width:'100%',display:'block',textAlign:'center',cursor:'pointer',boxSizing:'border-box'}}>
+                  <div style={{fontSize:12,color:'#3b82f6',marginBottom:14,lineHeight:1.6}}>
+                    Restore a full backup. Prior months are locked automatically based on today's date and your program start date. The current month stays unlocked.
+                  </div>
+                  <label title="Select a previously downloaded backup JSON file to restore all your data"
+                    style={{...S.btn('out'),width:'100%',display:'block',textAlign:'center',cursor:'pointer',boxSizing:'border-box',marginBottom:8}}>
                     ⬆ Choose File
                     <input type="file" accept=".json" style={{display:'none'}} onChange={e => {
                       const file = e.target.files[0]; if (!file) return;
@@ -4401,39 +4470,116 @@ function HollNutrition() {
                       reader.onload = (ev) => {
                         try {
                           const d = JSON.parse(ev.target.result);
-                          // Support both native format (plans/groc/customT) and
-                          // hn_* raw key format (hn_plans/hn_groc/hn_customt)
-                          const plans_  = d.plans   || (d.hn_plans   ? JSON.parse(d.hn_plans)   : null);
-                          const notes_  = d.notes   || (d.hn_notes   ? JSON.parse(d.hn_notes)   : null);
-                          const groc_   = d.groc    || (d.hn_groc    ? JSON.parse(d.hn_groc)    : null);
-                          const customT_= d.customT || (d.hn_customt ? JSON.parse(d.hn_customt) : null);
-                          const locked_ = d.locked  || (d.hn_locked  ? JSON.parse(d.hn_locked)  : null);
-                          const reclib_ = d.recipe_library || (d.hn_recipe_library ? JSON.parse(d.hn_recipe_library) : null);
-                          const mon_    = d.mon     || (d.hn_mon     ? +d.hn_mon   : null);
-                          const total_  = d.totalMon;
+                          // Support both native format and legacy hn_* raw key format
+                          const plans_   = d.plans        || (d.hn_plans   ? JSON.parse(d.hn_plans)   : null);
+                          const notes_   = d.notes        || (d.hn_notes   ? JSON.parse(d.hn_notes)   : null);
+                          const groc_    = d.groc         || (d.hn_groc    ? JSON.parse(d.hn_groc)    : null);
+                          const customT_ = d.customT      || (d.hn_customt ? JSON.parse(d.hn_customt) : null);
+                          const reclib_  = d.recipe_library || (d.hn_recipe_library ? JSON.parse(d.hn_recipe_library) : null);
+                          const prefs_   = d.prefs        || null;
+                          const health_  = d.health       || null;
+                          const dark_    = d.darkMode != null ? d.darkMode : null;
+                          const layout_  = d.layoutMode   || null;
+                          const recByMon_= d.recipes_by_month || null;
+
+                          // Compute current month from programStart + today,
+                          // then auto-lock all months before it.
+                          const ps = prefs_?.programStart || d.prefs?.programStart || null;
+                          let computedCurrentMon = null;
+                          if (ps) {
+                            const today = new Date();
+                            for (let m = 1; m <= 99; m++) {
+                              const dr = monDateRange(m, ps);
+                              if (!dr) break;
+                              if (today >= dr.start && today <= dr.end) { computedCurrentMon = m; break; }
+                              if (today < dr.start) { computedCurrentMon = Math.max(1, m - 1); break; }
+                            }
+                          }
+                          // Determine totalMon: max of plan keys or computedCurrentMon
+                          const planKeys = plans_ ? Object.keys(plans_).map(Number).filter(n => !isNaN(n)) : [];
+                          const maxPlanMon = planKeys.length ? Math.max(...planKeys) : 0;
+                          const resolvedTotal = Math.max(maxPlanMon, computedCurrentMon || 1);
+                          const resolvedCurrent = computedCurrentMon || resolvedTotal;
+
+                          // Build locked map: all months < current = true, current = false (unlocked)
+                          const autoLocked = {};
+                          for (let m = 1; m < resolvedCurrent; m++) autoLocked[m] = true;
+                          autoLocked[resolvedCurrent] = false;
+
+                          // Restore all fields
                           if (plans_)   savePlans(plans_);
                           if (notes_)   saveNotes(notes_);
                           if (groc_)    saveGroc(groc_);
                           if (customT_) saveCustomT(customT_);
-                          if (locked_) { LS.set('hn_locked', JSON.stringify(locked_)); }
-                          if (reclib_) { saveRecipeLibrary(reclib_); }
-                          if (mon_)    { setMon(mon_); LS.set('hn_mon', String(mon_)); }
-                          if (total_)  { setTotalMon(total_); LS.set('hn_totmon', String(total_)); }
-                          const prefs_ = d.prefs || null;
-                          if (prefs_)  { savePrefs(prefs_); }
-                          const counts = [
-                            plans_  ? `${Object.keys(plans_).length} months of plans` : '',
-                            reclib_ ? `${Object.keys(reclib_).length} recipe cards` : '',
-                            locked_ ? `${Object.keys(locked_).filter(k=>locked_[k]).length} locked months` : '',
-                            prefs_  ? 'preferences (avoid list, limits, goals)' : '',
-                          ].filter(Boolean).join(', ');
-                          alert('Import successful!' + (counts ? '\n\n' + counts : '') + '\n\nThe page will reload to apply all changes.');
+                          LS.set('hn_locked', JSON.stringify(autoLocked));
+                          if (reclib_)  { saveRecipeLibrary(reclib_); }
+                          setMon(resolvedCurrent); LS.set('hn_mon', String(resolvedCurrent));
+                          setTotalMon(resolvedTotal); LS.set('hn_totmon', String(resolvedTotal));
+                          if (prefs_)   { savePrefs({...prefs, ...prefs_}); }
+                          if (health_)  { saveHealth(health_); }
+                          if (dark_ != null) { setDarkMode(dark_); LS.set('hn_dark', String(dark_)); }
+                          if (layout_)  {
+                            setLayoutMode(layout_);
+                            if (layout_ === 'auto') localStorage.removeItem('hn_layout');
+                            else localStorage.setItem('hn_layout', layout_);
+                          }
+                          if (recByMon_) {
+                            Object.entries(recByMon_).forEach(([m, arr]) => {
+                              try { LS.set('hn_recipes_m'+m, JSON.stringify(arr)); } catch(e){}
+                            });
+                          }
+                          const planCount   = plans_   ? Object.keys(plans_).length : 0;
+                          const cardCount   = reclib_  ? Object.keys(reclib_).length : 0;
+                          const noteCount   = notes_   ? notes_.length : 0;
+                          const apptCount   = health_?.appointments?.length || 0;
+                          const monRecCount = recByMon_ ? Object.keys(recByMon_).length : 0;
+                          const lockedCount = resolvedCurrent - 1;
+                          const summary = [
+                            planCount   ? `${planCount} months of plans` : '',
+                            cardCount   ? `${cardCount} recipe cards` : '',
+                            monRecCount ? `recipe arrays for ${monRecCount} months` : '',
+                            noteCount   ? `${noteCount} progress entries` : '',
+                            apptCount   ? `${apptCount} health appointments` : '',
+                            prefs_      ? 'all preferences restored' : '',
+                            `M${resolvedCurrent} set as current month (${lockedCount} prior month${lockedCount!==1?'s':''} locked)`,
+                          ].filter(Boolean).join('\n• ');
+                          alert('Import successful!\n\n• ' + summary + '\n\nThe page will reload.');
                           window.location.reload();
                         } catch(err) { alert('Invalid backup file: ' + err.message); }
                       };
                       reader.readAsText(file);
                     }}/>
                   </label>
+                  <div style={{borderTop:'1px solid #bfdbfe',paddingTop:8,marginTop:2}}>
+                    <div style={{fontSize:11,fontWeight:700,color:'#1e40af',marginBottom:4}}>📚 New user? Import recipe library only</div>
+                    <div style={{fontSize:11,color:'#6b7280',marginBottom:8,lineHeight:1.5}}>
+                      Loads only the recipe card library from a backup — no plans, macros, or another user's preferences. Set up your own Preferences to get started.
+                    </div>
+                    <label style={{...S.btn('out'),width:'100%',display:'block',textAlign:'center',cursor:'pointer',boxSizing:'border-box',fontSize:12}}>
+                      📚 Import Library Only
+                      <input type="file" accept=".json" style={{display:'none'}} onChange={e => {
+                        const file = e.target.files[0]; if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          try {
+                            const d = JSON.parse(ev.target.result);
+                            const reclib_   = d.recipe_library || (d.hn_recipe_library ? JSON.parse(d.hn_recipe_library) : null);
+                            const recByMon_ = d.recipes_by_month || null;
+                            if (!reclib_ && !recByMon_) { alert('No recipe library found in this file.'); return; }
+                            if (reclib_) saveRecipeLibrary(reclib_);
+                            if (recByMon_) {
+                              Object.entries(recByMon_).forEach(([m, arr]) => {
+                                try { LS.set('hn_recipes_m'+m, JSON.stringify(arr)); } catch(e){}
+                              });
+                            }
+                            const cardCount = reclib_ ? Object.keys(reclib_).length : 0;
+                            alert(`Recipe library imported: ${cardCount} cards available.\n\nNo plans, macros, or preferences were changed.\n\nGo to ⚙️ Preferences to set up your profile and get started.`);
+                          } catch(err) { alert('Invalid file: ' + err.message); }
+                        };
+                        reader.readAsText(file);
+                      }}/>
+                    </label>
+                  </div>
                 </div>
               </div>
               <div style={{marginTop:12,borderTop:'1px solid #e8e4dc',paddingTop:12}}>
