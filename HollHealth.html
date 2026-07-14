@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.56';
+const APP_VERSION = '1.5.57';
 const APP_CHANGELOG = [
+  { version: '1.5.57', date: '2026-07-14', notes: 'Sweet Potato Black Bean Tacos card corrected: plan portion was 3 tacos but card servingSize said "2 tacos + side rice" with only 2 tortillas listed. Root cause: v1.5.53 migration restored the June 17 backup card which was scaled for 2 tacos, while the AI-generated plan correctly targets 3 tacos (592 cal). Card updated to servingSize="3 tacos + side rice" with all ingredients scaled x1.5: tortillas 2→3, black beans 3/4→1 cup, sweet potato 1→1-2 medium, spinach 1→1.5 cups, salsa 2→3 tbsp, olive oil 2 tsp→1 tbsp, brown rice 1/2→3/4 cup, chili powder and cumin 1/2→3/4 tsp each. Grocery list will now correctly show 12 corn tortillas (3x4 occurrences) instead of 8. No other M13 cards have a servingSize vs plan portion mismatch. The v1.5.53 migration sentinel (hn_lib_migration_m13) is cleared so the corrected card patches in on next load.' },
   { version: '1.5.56', date: '2026-07-14', notes: 'Grocery PDF page overflow fix. The grocery list used a single-page 4-column layout with a hard footer cutoff — any categories that did not fit were silently dropped. With the v1.5.54 unicode fraction fix producing correct per-ingredient quantities, the Produce column grew tall enough to push Spinach (5 cups) and Whole wheat toast (2 slices) past the page boundary. Fixed by replacing the hard-stop return with a page-break continuation: when any column item would exceed FOOTER_Y, a new landscape page is added, all 4 column Y positions reset to the top margin, and rendering continues from the new page.' },
   { version: '1.5.55', date: '2026-07-14', notes: 'Multi-user diet mode support. New Diet Mode toggle in Preferences (Vegetarian / Omnivore). Vegetarian (default): all existing behaviour unchanged — no meat, fish, shellfish, or alcohol. Omnivore: only alcohol is excluded by default; meat, fish, and shellfish are allowed and removed from the hardcoded NEVER list. All AI prompt templates (week, day, libpackage, fullpackage, recipe, replacedish, fillcards, swap suggestions) now read dietMode from prefs and inject the correct diet constraint string. isNever() and isDisliked() accept a dietMode parameter so the planner correctly flags only actually-disallowed items. The NEVER constant is split: NEVER_VEGETARIAN (full list) vs NEVER_ALWAYS (alcohol only, applies to all modes). Avoid list lock notice in Preferences UI updates to match the active mode. Health tab appointment suggestions updated to be diet-neutral. Each user\u2019s diet mode is stored in their own localStorage (hn_prefs) and never shared — Andrew\u2019s vegetarian setting and his son\u2019s omnivore setting coexist safely on separate devices.' },
   { version: '1.5.54', date: '2026-07-14', notes: 'Root cause fix for nearly all remaining grocery quantity bugs: Unicode vulgar fraction characters (½ ¼ ¾ ⅛ ⅜ ⅙ ⅓ ¾ etc.) used in recipe card ingredient amounts were not parsed by parseQty — the regex only matched ASCII digit-slash fractions like 1/2. All unicode fractions now converted to decimal at the top of parseQty before any other processing. This fixes: Banana 7→3.5 medium, Bell pepper 7→3.25 cups, Carrots 3→1.25 cups, Celery 2→1 cup, Coleslaw mix 2→1 cup, Mini peppers 2→0.5 cups, Mixed berries 4→2 cups, Rolled oats 2→1 cup, Brown rice 5→3 cups, Black beans 4→2 cans, Chickpeas 3→2 cans, Edamame 2+2.5tbsp→0.5 cup+2.5tbsp, Onion 8tbsp+2→0.5 cup+8tbsp→consolidated, Sesame oil 4+2tbsp→~2.67tbsp, Olive oil 4tbsp+3→~5tbsp. Also fixes Protein powder deduplication: normalizeIngName now strips "plant-based " prefix so "Plant-based protein powder" and "Protein powder" resolve to the same key.' },
@@ -1254,6 +1255,10 @@ function HollNutrition() {
         // Correct single-serving ingredients confirmed from HollHealth-backup-all-12-months.json (June 17 backup).
         // Sentinel key prevents re-running on subsequent loads.
         const M13_MIGRATION_SENTINEL = 'hn_lib_migration_m13';
+        // v1.5.57: sentinel cleared to re-run migration with corrected taco card (3 tortillas, scaled ×1.5)
+        if (localStorage.getItem(M13_MIGRATION_SENTINEL) === '1') {
+          localStorage.removeItem(M13_MIGRATION_SENTINEL);
+        }
         if (!localStorage.getItem(M13_MIGRATION_SENTINEL)) {
           const m13Cards = {
             'kale white bean soup': {
@@ -1271,17 +1276,17 @@ function HollNutrition() {
               ]
             },
             'sweet potato black bean tacos': {
-              servingSize: '2 tacos + side rice',
+              servingSize: '3 tacos + side rice',
               ingredients: [
-                {item: 'Corn tortillas', amount: '2'},
-                {item: 'Black beans', amount: '¾ cup'},
-                {item: 'Sweet potato', amount: '1 medium'},
-                {item: 'Spinach', amount: '1 cup'},
-                {item: 'Salsa', amount: '2 tbsp'},
-                {item: 'Olive oil', amount: '2 tsp'},
-                {item: 'Brown rice', amount: '½ cup'},
-                {item: 'Chili powder', amount: '½ tsp'},
-                {item: 'Cumin', amount: '½ tsp'},
+                {item: 'Corn tortillas', amount: '3'},
+                {item: 'Black beans', amount: '1 cup'},
+                {item: 'Sweet potato', amount: '1-2 medium'},
+                {item: 'Spinach', amount: '1.5 cups'},
+                {item: 'Salsa', amount: '3 tbsp'},
+                {item: 'Olive oil', amount: '1 tbsp'},
+                {item: 'Brown rice', amount: '3/4 cup'},
+                {item: 'Chili powder', amount: '3/4 tsp'},
+                {item: 'Cumin', amount: '3/4 tsp'},
               ]
             },
             'almond butter oatmeal with berries': {
@@ -1414,7 +1419,7 @@ function HollNutrition() {
           if (migrated) {
             try { localStorage.setItem('hn_recipe_library', JSON.stringify(lib)); } catch(e){}
           }
-          localStorage.setItem(M13_MIGRATION_SENTINEL, '1');
+          localStorage.setItem(M13_MIGRATION_SENTINEL, '2');
         }
         // ── End M13 migration ──────────────────────────────────────────────────────────────────
         setRecipeLibrary(lib);
