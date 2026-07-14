@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.5.52';
+const APP_VERSION = '1.5.53';
 const APP_CHANGELOG = [
+  { version: '1.5.53', date: '2026-07-14', notes: 'Library card migration: one-time patch applied on app load to overwrite the 12 M13 recipe cards that were overwritten with AI-generated batch quantities back to their correct single-serving amounts (confirmed from June 17 backup). Migration is idempotent — it checks a sentinel key (hn_lib_migration_m13) to skip on subsequent loads. In-app recipe card viewer confirmed to already prefer library cards over per-month AI data (openRecipe checks recipeLibrary first by normName key, then by full scan, before falling back to currentRecipes — same priority as PDF generator since v1.5.51). No viewer code change needed.' },
   { version: '1.5.52', date: '2026-07-13', notes: 'Unit consolidation post-processing pass added to buildGroceryFromPlan: (1) tsp→tbsp when both present (÷3) — olive oil "2 tsp + 7 tbsp" becomes "~8 tbsp"; sesame oil "4 tsp + 2 tbsp" becomes "~3.5 tbsp"; (2) tbsp→cup when both present (÷16) — salsa "4 tbsp + 0.5 cup" becomes "0.75 cup"; (3) medium→cup for produce when both present (1 medium onion/pepper≈1 cup) — onion "4 tbsp + 2 medium + 1 cup" becomes "4 tbsp + 3 cups"; (4) ct→medium when medium also present — banana "2.5 + 2 medium" merges to one medium total; (5) ct→cup for produce when cup present (1 bell pepper=1 cup). Also diagnosed recipe card serving size issue: live localStorage library card for Kale White Bean Soup was overwritten with AI batch version; the backup JSON has the correct single-serving card. Fix: restore from backup JSON to recover correct card quantities.' },
   { version: '1.5.51', date: '2026-07-13', notes: 'Recipe card serving size fix. Root cause: the PDF recipe pages were sourced from per-month AI-generated recipes (hn_recipes_m13), which were written as 4-serving batch recipes. The 168-card library (hn_recipe_library) has correct single-serving quantities but was not being used for PDF recipe pages. Two fixes: (1) Code — rdataFinal now prefers the library card over the per-month AI card when building PDF recipe pages; library cards have curated single-serving quantities while AI cards are often batch-scaled. (2) Prompt — added SINGLE_SERVING_RULE constant injected into all recipe-generating prompt modes (libpackage, fullpackage, fillcards, recipesonly) requiring all generated recipe cards to be written for exactly 1 person eating 1 meal, with ingredient quantities scaled to a single portion.' },
   { version: '1.5.50', date: '2026-07-13', notes: 'Five grocery fixes from v1.5.49 audit: (1) Dish names removed from grocery list — fallback entry no longer fires when a recipe card was found and expanded; dish ingredients are already in ingMap under their own keys. (2) Sunflower Seeds deduplication — isWholeFood now matches on shared leading word ("sunflower kernels" vs "sunflower seeds" both share "sunflower") and uses item.portion directly, eliminating the duplicate kernels/seeds entries. (3) Banana "2.5 + 2 medium" fixed — parseQty now strips trailing descriptor text after comma before parsing so "1/2, sliced" → qty=0.5, unit=ct; combined with banana merging into one accumulator gives clean total. (4) Chickpeas "2.5 cans" fixed — bean cup→can rounding changed from nearest-0.5 to ceiling (whole cans only). (5) Edamame split fixed — normalizeIngName strips "beans" suffix so "Edamame beans" and "Edamame" both key to "Edamame"; category override ensures all edamame routes to Protein & Beans regardless of frozen/shelled form.' },
@@ -1220,6 +1221,174 @@ function HollNutrition() {
           lib[cantaloupeKey] = {...lib[cantaloupeKey],
             ingredients: [{item: 'Cantaloupe', amount: '1 cup cubed (138g)'}]};
         }
+        // ── One-time migration v1.5.53: patch M13 recipe cards back to single-serving ────────
+        // These cards were overwritten by AI-generated batch quantities during a prior Reimport.
+        // Correct single-serving ingredients confirmed from HollHealth-backup-all-12-months.json (June 17 backup).
+        // Sentinel key prevents re-running on subsequent loads.
+        const M13_MIGRATION_SENTINEL = 'hn_lib_migration_m13';
+        if (!localStorage.getItem(M13_MIGRATION_SENTINEL)) {
+          const m13Cards = {
+            'kale white bean soup': {
+              servingSize: '1 large bowl',
+              ingredients: [
+                {item: 'White beans', amount: '1 cup'},
+                {item: 'Kale', amount: '1 cup'},
+                {item: 'Carrots', amount: '½ cup'},
+                {item: 'Celery', amount: '½ cup'},
+                {item: 'Onion', amount: '¼ cup'},
+                {item: 'Vegetable broth', amount: '1 cup'},
+                {item: 'Olive oil', amount: '1 tbsp'},
+                {item: 'Garlic', amount: '2 cloves'},
+                {item: 'Dried oregano', amount: '½ tsp'},
+              ]
+            },
+            'sweet potato black bean tacos': {
+              servingSize: '2 tacos + side rice',
+              ingredients: [
+                {item: 'Corn tortillas', amount: '2'},
+                {item: 'Black beans', amount: '¾ cup'},
+                {item: 'Sweet potato', amount: '1 medium'},
+                {item: 'Spinach', amount: '1 cup'},
+                {item: 'Salsa', amount: '2 tbsp'},
+                {item: 'Olive oil', amount: '2 tsp'},
+                {item: 'Brown rice', amount: '½ cup'},
+                {item: 'Chili powder', amount: '½ tsp'},
+                {item: 'Cumin', amount: '½ tsp'},
+              ]
+            },
+            'almond butter oatmeal with berries': {
+              servingSize: '1 bowl',
+              ingredients: [
+                {item: 'Rolled oats', amount: '½ cup dry'},
+                {item: 'Oat milk', amount: '1 cup'},
+                {item: 'Almond butter', amount: '1.5 tbsp'},
+                {item: 'Mixed berries', amount: '½ cup'},
+                {item: 'Banana', amount: '½ medium'},
+              ]
+            },
+            'teriyaki chickpea stir fry': {
+              servingSize: '1 serving',
+              ingredients: [
+                {item: 'Chickpeas', amount: '¾ cup'},
+                {item: 'Frozen vegetables', amount: '1 cup'},
+                {item: 'Teriyaki sauce', amount: '2 tbsp'},
+                {item: 'Sesame oil', amount: '½ tsp'},
+                {item: 'Brown rice', amount: '¾ cup'},
+                {item: 'Sesame seeds', amount: '½ tsp'},
+              ]
+            },
+            'tempeh bok choy stir fry with rice noodles': {
+              servingSize: '1 serving',
+              ingredients: [
+                {item: 'Tempeh', amount: '4 oz'},
+                {item: 'Bok choy', amount: '2 cups'},
+                {item: 'Rice noodles', amount: '2 oz'},
+                {item: 'Soy sauce', amount: '1.5 tbsp'},
+                {item: 'Sesame oil', amount: '1 tbsp'},
+                {item: 'Edamame', amount: '¼ cup'},
+                {item: 'Bell pepper', amount: '½'},
+                {item: 'Garlic', amount: '1 clove'},
+                {item: 'Ground ginger', amount: '½ tsp'},
+              ]
+            },
+            'healthy cereal bowl': {
+              servingSize: '1 bowl',
+              ingredients: [
+                {item: 'Cereal', amount: '1 cup'},
+                {item: 'Oat milk', amount: '1 cup'},
+                {item: 'Banana', amount: '½ medium'},
+                {item: 'Mixed berries', amount: '½ cup'},
+                {item: 'Hemp seeds', amount: '1 tbsp'},
+              ]
+            },
+            'broccoli peanut bowl': {
+              servingSize: '1 bowl',
+              ingredients: [
+                {item: 'Broccoli', amount: '1 cup'},
+                {item: 'Quinoa', amount: '2 tbsp'},
+                {item: 'White rice', amount: '2 tbsp'},
+                {item: 'Water', amount: '1 cup'},
+                {item: 'Peanut butter', amount: '1 tbsp'},
+                {item: 'Soy sauce', amount: '1 tbsp'},
+                {item: 'Sesame oil', amount: '½ tsp'},
+                {item: 'Ground ginger', amount: '¼ tsp'},
+                {item: 'Coleslaw mix', amount: '½ cup'},
+                {item: 'Mini peppers', amount: '¼ cup'},
+              ]
+            },
+            'vegetable enchiladas': {
+              servingSize: '2 enchiladas',
+              ingredients: [
+                {item: 'Corn tortillas', amount: '2'},
+                {item: 'Black beans', amount: '½ cup'},
+                {item: 'Bell pepper', amount: '¼ cup'},
+                {item: 'Onion', amount: '2 tbsp'},
+                {item: 'Enchilada sauce', amount: '¾ cup'},
+                {item: 'Cumin', amount: '½ tsp'},
+                {item: 'Chili powder', amount: '½ tsp'},
+                {item: 'Olive oil', amount: '½ tbsp'},
+              ]
+            },
+            'berry spinach smoothie': {
+              servingSize: '1 glass',
+              ingredients: [
+                {item: 'Spinach', amount: '1 cup'},
+                {item: 'Frozen berries', amount: '1 cup'},
+                {item: 'Protein powder', amount: '1 scoop'},
+                {item: 'Oat milk', amount: '1 cup'},
+                {item: 'Banana', amount: '½'},
+              ]
+            },
+            'edamame and chickpea salad': {
+              servingSize: '1 bowl',
+              ingredients: [
+                {item: 'Edamame', amount: '2.5 tbsp'},
+                {item: 'Chickpeas', amount: '⅜ can'},
+                {item: 'Bell pepper', amount: '⅙ medium'},
+                {item: 'Carrots', amount: '⅙ medium'},
+                {item: 'Dried cranberries', amount: '1 tsp'},
+                {item: 'Olive oil', amount: '½ tbsp'},
+                {item: 'Red wine vinegar', amount: '½ tbsp'},
+                {item: 'Italian seasoning', amount: '¼ tsp'},
+              ]
+            },
+            'sticky meatless meatball bowl': {
+              servingSize: '1 bowl',
+              ingredients: [
+                {item: 'Vegan meatballs', amount: '4–6'},
+                {item: 'Brown rice', amount: '½ cup'},
+                {item: 'Broccoli florets', amount: '1 cup'},
+                {item: 'Teriyaki sauce', amount: '2–3 tbsp'},
+                {item: 'Sesame seeds', amount: '½ tsp'},
+                {item: 'Green onions', amount: '1 tbsp'},
+              ]
+            },
+            'veggie omelette': {
+              servingSize: '1 omelette',
+              ingredients: [
+                {item: 'Large eggs', amount: '3'},
+                {item: 'Spinach', amount: '1 cup'},
+                {item: 'Bell pepper', amount: '½ cup'},
+                {item: 'Onion', amount: '2 tbsp'},
+                {item: 'Olive oil', amount: '1 tsp'},
+                {item: 'Salsa', amount: '2 tbsp'},
+                {item: 'Whole wheat toast', amount: '1 slice'},
+              ]
+            },
+          };
+          let migrated = false;
+          Object.keys(m13Cards).forEach(function(key) {
+            if (lib[key]) {
+              lib[key] = {...lib[key], ...m13Cards[key]};
+              migrated = true;
+            }
+          });
+          if (migrated) {
+            try { localStorage.setItem('hn_recipe_library', JSON.stringify(lib)); } catch(e){}
+          }
+          localStorage.setItem(M13_MIGRATION_SENTINEL, '1');
+        }
+        // ── End M13 migration ──────────────────────────────────────────────────────────────────
         setRecipeLibrary(lib);
       } } catch(e){}
       // ── One-time migration: re-key library entries by normName ────────────────
