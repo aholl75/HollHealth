@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.6.4';
+const APP_VERSION = '1.6.5';
 const APP_CHANGELOG = [
+  { version: '1.6.5', date: '2026-07-14', notes: 'Planner grocery list now derives from buildGroceryFromPlan (the same pipeline used by the PDF) instead of the raw AI-imported string list stored in hn_groc. Eliminates discrepancies such as plural raw entries (Bananas, Apples) appearing alongside correctly-computed entries (Banana 7 medium, Apple 5 medium). Derived list updates automatically when the plan or recipe cards change, so swaps are always reflected without a manual grocery re-import. Falls back to stored AI list only if buildGroceryFromPlan returns no categories. Category icon map expanded to cover all current category names including Protein & Beans, Oils & Condiments, and Other.' },
   { version: '1.6.4', date: '2026-07-14', notes: 'Help content updated to match v1.6.0\u2013v1.6.3 features. Help step 10 (Back up and sync) rewritten to describe comprehensive export, auto-locking on import, and the new Import Library Only option for new users. Process flow cards updated: Generate a new month plan now lists firstName/programStart in Preferences setup; Backup & restore data expanded to 6 steps covering auto-locking and new-user library import; Add or view a recipe card corrected to reference Import Library Only instead of the legacy \u201c12-month backup JSON\u201d phrasing. Version numbering convention (X.Y.Z) added to handoff: X=major, Y=fix pack, Z=single fix. v1.5.60\u2013v1.5.64 retroactively renumbered to v1.6.0\u2013v1.6.4 to correctly reflect that multi-user support features constitute a minor release, not individual bug patches.' },
   { version: '1.6.3', date: '2026-07-14', notes: 'Smart import locking and new-user library-only flow. Full import now computes the current month automatically from programStart + today using monDateRange, locks all prior months (true), sets the current month unlocked (false), and opens the app on the current month \u2014 ignoring whatever locked state was in the backup file. totalMon is set to the max of plan keys or the computed current month. A second \u201cImport Library Only\u201d file input is available for new users: imports only recipe_library and recipes_by_month, leaves all plans, macros, prefs, progress, and health untouched, and directs the user to Preferences to complete setup.' },
   { version: '1.6.2', date: '2026-07-14', notes: 'Comprehensive backup/restore overhaul. Export now includes: all months of plans, grocery lists, custom targets, locked months, the 168-card recipe library, per-month recipe card arrays (hn_recipes_m1\u2026mN), all progress/weight entries, health appointments, full prefs object (name, height, age, goal weight, activity, goal, program start, diet mode, always/prefer/avoid/limit lists), dark mode, and layout mode. Import restores every field and writes per-month recipe arrays back to hn_recipes_m* keys. Confirmation summary lists plan count, card count, month recipe arrays, progress entries, health appointments, and theme. Legacy hn_* raw key format still supported for backward compatibility.' },
@@ -3240,13 +3241,13 @@ function HollNutrition() {
             )}
           </div>
 
-          {/* ── GROCERY (inline at bottom of Planner) ─────────────────────────── */}
+          {/* ── GROCERY (inline at bottom of Planner) ────────────────────── */}
           {tab==='planner' && (
             <div className="fi" style={{marginTop:0,paddingTop:0}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
                 <div>
                   <h1 style={{...S.h1,fontSize:18,marginBottom:2}}>🛒 Grocery List — Month {mon}</h1>
-                  <p style={{...S.sub,marginBottom:0}}>Built from your meal plan · included on Page 2 of the PDF</p>
+                  <p style={{...S.sub,marginBottom:0}}>Derived from your meal plan · whole fruits counted per occasion · matches PDF</p>
                 </div>
                 <button style={{...S.btn('sage'),padding:'8px 14px',fontSize:12}}
                   title="Generate a grocery list from your current meal plan"
@@ -3257,34 +3258,56 @@ function HollNutrition() {
               {!plans[mon] ? (
                 <div style={{...S.card,textAlign:'center',padding:32,color:'#7a7a6a',fontSize:13}}>
                   <div style={{fontSize:36,marginBottom:10}}>🛒</div>
-                  Generate meals first using ✦ Build from Library or 🎲 Random Package from Claude, then import the grocery list.
+                  Generate meals first using ✶ Build from Library or 🎲 Random Package from Claude, then import the grocery list.
                 </div>
-              ) : !curGroc ? (
-                <div style={{...S.card,textAlign:'center',padding:32,color:'#7a7a6a',fontSize:13}}>
-                  <div style={{fontSize:36,marginBottom:10}}>📋</div>
-                  Plan ready — click 📋 Import Grocery List from Claude above.
-                </div>
-              ) : curGroc.categories?.map((cat,i) => (
-                <div key={i} style={{...S.card,marginBottom:10}}>
-                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:700,marginBottom:10,color:'#1b3d2a',display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{width:26,height:26,background:'#edf7f0',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13}}>
-                      {({Produce:'🥦',Vegetables:'🥦',Fruits:'🍎',Protein:'🥚',Grains:'🌾','Grains & Bread':'🌾',Dairy:'🧀','Dairy & Refrigerated':'🧀',Nuts:'🥜','Nuts, Seeds & Nut Butters':'🥜',Spices:'🌿','Pantry & Spices':'🌿',Condiments:'🫙','Oils and Condiments':'🫙',Frozen:'❄️',Canned:'🥫','Canned & Packaged':'🥫',Beverages:'🧃'}[cat.name])||'🛒'}
-                    </span>
-                    {cat.name} <span style={{fontSize:11,fontWeight:400,color:'#9a9a8a'}}>({cat.items?.length})</span>
+              ) : (() => {
+                // Always derive from the actual plan + recipe library so the display
+                // matches the PDF exactly (same buildGroceryFromPlan pipeline).
+                // Falls back to stored AI list only if derivedGroc produces no categories.
+                const days7 = plans[mon] || [];
+                const derivedGroc = days7.length > 0 ? buildGroceryFromPlan(days7, recipeLibrary) : null;
+                const displayCats = (derivedGroc && derivedGroc.categories && derivedGroc.categories.length > 0)
+                  ? derivedGroc.categories
+                  : (curGroc && curGroc.categories ? curGroc.categories : null);
+                if (!displayCats) return (
+                  <div style={{...S.card,textAlign:'center',padding:32,color:'#7a7a6a',fontSize:13}}>
+                    <div style={{fontSize:36,marginBottom:10}}>📋</div>
+                    Plan ready — grocery list appears automatically from your recipe cards.
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:5}}>
-                    {cat.items?.map((item,j) => {
-                      const k=`${mon}-${i}-${j}`;
-                      return (
-                        <label key={j} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:chk[k]?'#f0f7f0':'#faf7f2',borderRadius:7,cursor:'pointer',fontSize:13,textDecoration:chk[k]?'line-through':'none',color:chk[k]?'#9a9a8a':'#1a1a1a',border:`1px solid ${chk[k]?'#b6d9be':'#eee'}`}}>
-                          <input type="checkbox" style={{accentColor:'#1b3d2a',width:14,height:14,flexShrink:0}} checked={!!chk[k]} onChange={() => setChk(p=>({...p,[k]:!p[k]}))}/>
-                          {item}
-                        </label>
-                      );
-                    })}
+                );
+                const ICON = {
+                  'Produce':'🥦','Vegetables':'🥦','Fruits':'🍎',
+                  'Protein & Beans':'🥚','Protein':'🥚',
+                  'Grains':'🌾','Grains & Bread':'🌾',
+                  'Dairy':'🧀','Dairy & Refrigerated':'🧀',
+                  'Nuts, Seeds & Nut Butters':'🥜','Nuts':'🥜',
+                  'Pantry & Spices':'🌿','Spices':'🌿',
+                  'Oils & Condiments':'🫙','Oils and Condiments':'🫙','Condiments':'🫙',
+                  'Frozen':'❄️','Canned & Packaged':'🥫','Canned':'🥫',
+                  'Beverages':'🧃','Other':'📦'
+                };
+                return displayCats.map((cat,i) => (
+                  <div key={i} style={{...S.card,marginBottom:10}}>
+                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:700,marginBottom:10,color:'#1b3d2a',display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{width:26,height:26,background:'#edf7f0',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13}}>
+                        {ICON[cat.name] || '🛒'}
+                      </span>
+                      {cat.name} <span style={{fontSize:11,fontWeight:400,color:'#9a9a8a'}}>({cat.items?.length})</span>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:5}}>
+                      {cat.items?.map((item,j) => {
+                        const k=`${mon}-${i}-${j}`;
+                        return (
+                          <label key={j} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:chk[k]?'#f0f7f0':'#faf7f2',borderRadius:7,cursor:'pointer',fontSize:13,textDecoration:chk[k]?'line-through':'none',color:chk[k]?'#9a9a8a':'#1a1a1a',border:`1px solid ${chk[k]?'#b6d9be':'#eee'}`}}>
+                            <input type="checkbox" style={{accentColor:'#1b3d2a',width:14,height:14,flexShrink:0}} checked={!!chk[k]} onChange={() => setChk(p=>({...p,[k]:!p[k]}))}/>
+                            {item}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           )}
           </>
