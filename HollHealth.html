@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.6.5';
+const APP_VERSION = '1.6.6';
 const APP_CHANGELOG = [
+  { version: '1.6.6', date: '2026-08-24', notes: 'Grocery list audit fixes from M14 debug report review. (1) Skip list expanded: "water to thin tahini", "to taste", "as needed", "cooking spray" now excluded alongside water/salt/ice/pepper. (2) CATEGORY_OVERRIDE table expanded: garlic powder, onion powder, peanut butter, almond butter, sunflower/pumpkin/sesame/hemp/chia/flax seeds all get explicit category assignments to prevent keyword-prefix misfires routing them to Produce. (3) normalizeIngName aliases: "Whole wheat toast" \u2192 "Whole wheat bread" (Grains & Bread), "Baby spinach" \u2192 "Spinach" (deduplicates across cards), "Ginger" alone \u2192 "Ground ginger" (consolidates fresh-grated and ground entries). (4) Missing card warning: isDish() gate removed \u2014 ALL plan items with no card are now flagged (including packaged snacks like GoMacro bars), warning text updated to say "items" not "dishes", and message clarifies items are excluded from grocery list. (5) CAT_KEYS: "toast" added to Grains & Bread; "water" and "protein powder" removed from Beverages (protein powder now routes via Pantry & Spices). Grocery debug report button location noted: Backup & Sync Data section \u2192 Download Grocery Debug Report.' },
   { version: '1.6.5', date: '2026-07-14', notes: 'Planner grocery list now derives from buildGroceryFromPlan (the same pipeline used by the PDF) instead of the raw AI-imported string list stored in hn_groc. Eliminates discrepancies such as plural raw entries (Bananas, Apples) appearing alongside correctly-computed entries (Banana 7 medium, Apple 5 medium). Derived list updates automatically when the plan or recipe cards change, so swaps are always reflected without a manual grocery re-import. Falls back to stored AI list only if buildGroceryFromPlan returns no categories. Category icon map expanded to cover all current category names including Protein & Beans, Oils & Condiments, and Other.' },
   { version: '1.6.4', date: '2026-07-14', notes: 'Help content updated to match v1.6.0\u2013v1.6.3 features. Help step 10 (Back up and sync) rewritten to describe comprehensive export, auto-locking on import, and the new Import Library Only option for new users. Process flow cards updated: Generate a new month plan now lists firstName/programStart in Preferences setup; Backup & restore data expanded to 6 steps covering auto-locking and new-user library import; Add or view a recipe card corrected to reference Import Library Only instead of the legacy \u201c12-month backup JSON\u201d phrasing. Version numbering convention (X.Y.Z) added to handoff: X=major, Y=fix pack, Z=single fix. v1.5.60\u2013v1.5.64 retroactively renumbered to v1.6.0\u2013v1.6.4 to correctly reflect that multi-user support features constitute a minor release, not individual bug patches.' },
   { version: '1.6.3', date: '2026-07-14', notes: 'Smart import locking and new-user library-only flow. Full import now computes the current month automatically from programStart + today using monDateRange, locks all prior months (true), sets the current month unlocked (false), and opens the app on the current month \u2014 ignoring whatever locked state was in the backup file. totalMon is set to the max of plan keys or the computed current month. A second \u201cImport Library Only\u201d file input is available for new users: imports only recipe_library and recipes_by_month, leaves all plans, macros, prefs, progress, and health untouched, and directs the user to Preferences to complete setup.' },
@@ -763,6 +764,13 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     n = n.replace(/^(Edamame)\s+beans?$/i, '$1');
     // Normalise "Plant-based protein powder" -> "Protein powder" so shake and smoothie cards dedup
     n = n.replace(/^[Pp]lant[- ]based\s+/i, '');
+    // Normalise "Whole wheat toast" -> "Whole wheat bread" (same shopping item)
+    n = n.replace(/^Whole\s+wheat\s+toast$/i, 'Whole wheat bread');
+    // Normalise "Baby spinach" -> "Spinach" (same produce item)
+    n = n.replace(/^Baby\s+spinach$/i, 'Spinach');
+    // Normalise "Ginger, grated" / "Fresh ginger" -> "Ground ginger" for shopping
+    // (recipe cards use grated fresh ginger in tsp amounts; buy ground ginger)
+    n = n.replace(/^Ginger$/i, 'Ground ginger');
     // Strip trailing orphan comma
     n = n.replace(/,\s*$/, '').trim();
     // Capitalise first letter (string-format card ingredients may be all-lowercase)
@@ -786,12 +794,12 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     // "Ground ginger" routing to Produce via the 'ginger' keyword.
     {name:'Pantry & Spices',     words:['ground ginger','ground cumin','ground coriander','ground cinnamon','ground turmeric','ground paprika','dried oregano','dried basil','dried thyme','dried parsley','dried rosemary','dried sage','dried dill','italian seasoning']},
     {name:'Produce',             words:['spinach','kale','arugula','lettuce','greens','broccoli','cauliflower','zucchini','pepper','onion','carrot','celery','coleslaw','cabbage','cucumber','potato','sweet potato','squash','asparagus','pea','leek','bok','tomato','beet','mushroom','ginger','garlic','parsley','cilantro','dill','oregano','apple','banana','pear','strawberr','blueberr','blackberr','raspberr','orange','grape','melon','berry','berries','lemon','lime','avocado','mango','fruit']},
-    {name:'Grains & Bread',      words:['rice','oat','quinoa','bread','pasta','tortilla','flour','noodle','couscous','granola','cracker','pretzel','bagel','corn']},
+    {name:'Grains & Bread',      words:['rice','oat','quinoa','bread','toast','pasta','tortilla','flour','noodle','couscous','granola','cracker','pretzel','bagel','corn']},
     {name:'Nuts, Seeds & Nut Butters', words:['walnut','almond','pumpkin seed','sunflower','chia','flax','hemp','peanut','cashew','pecan','pistachio','mixed nut','seed','nut butter','tahini','almond butter','peanut butter','nut']},
     {name:'Dairy & Eggs',        words:['eggs','cheese','milk','butter','cream','yogurt','kefir']},
     {name:'Oils & Condiments',   words:['oil','vinegar','soy sauce','tamari','teriyaki','pesto','hummus','mustard','hot sauce','bbq','barbecue','mayo','dressing','sauce']},
     {name:'Pantry & Spices',     words:['salt','cumin','coriander','paprika','turmeric','cinnamon','chili','spice','seasoning','herb','sugar','honey','jelly','jam','vanilla','baking','nutritional yeast','protein powder','protein bar','granola bar','straw','chip','popcorn']},
-    {name:'Beverages',           words:['protein powder','water']},
+    {name:'Beverages',           words:['juice','smoothie','kombucha']},
   ];
 
   const routeItem = (rawName) => {
@@ -851,12 +859,26 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     const displayName = normalizeIngName(rawName);
     if (!displayName) return;
     const key = displayName.toLowerCase().trim();
-    // Skip non-shoppable items
-    if (['water','black pepper','salt','ice','salt and pepper'].some(s => key === s)) return;
+    // Skip non-shoppable pantry staples and cooking-process items
+    const SKIP_EXACT = ['water','black pepper','salt','ice','salt and pepper',
+      'salt and pepper to taste','to taste','cooking spray','water to thin tahini'];
+    if (SKIP_EXACT.some(s => key === s || key.startsWith(s + ' '))) return;
+    if (/^\s*to taste\s*$/i.test(rawName) || /^\s*as needed\s*$/i.test(rawName)) return;
     // Route on RAW name to preserve 'frozen' signal, then apply overrides for items
     // that should always be in the same aisle regardless of preparation form.
     const CATEGORY_OVERRIDE = {
-      'edamame': 'Protein & Beans',  // frozen or shelled — both in bean aisle
+      'edamame':                   'Protein & Beans',
+      'garlic powder':             'Pantry & Spices',
+      'onion powder':              'Pantry & Spices',
+      'peanut butter':             'Nuts, Seeds & Nut Butters',
+      'almond butter':             'Nuts, Seeds & Nut Butters',
+      'sunflower seeds':           'Nuts, Seeds & Nut Butters',
+      'pumpkin seeds':             'Nuts, Seeds & Nut Butters',
+      'sesame seeds':              'Nuts, Seeds & Nut Butters',
+      'hemp seeds':                'Nuts, Seeds & Nut Butters',
+      'chia seeds':                'Nuts, Seeds & Nut Butters',
+      'flax seeds':                'Nuts, Seeds & Nut Butters',
+      'ground ginger':             'Pantry & Spices',
     };
     const normDisplayKey = displayName.toLowerCase().trim();
     const category = forceCat || CATEGORY_OVERRIDE[normDisplayKey] || routeItem(rawName);
@@ -2921,14 +2943,16 @@ function HollNutrition() {
               const isLocked = !!lockedMonths[mon];
               if (!hasPlan && !isLocked) return null;
 
-              // Find dish-level meal items that have no recipe card — uses shared normName()
+              // Find ALL meal items with no recipe card (dishes AND packaged snacks).
+              // isDish() gate removed — a GoMacro bar or protein bar with no card is just
+              // as missing as a dish, and the shopper needs to know about it.
               const missingCardMap = {}; // name → [day numbers]
               if (hasPlan) {
                 (plans[mon]||[]).forEach((d, di) => {
                   (d?.meals||[]).forEach(m => {
                     if (m.slot === 'Protein Supplement') return;
                     (m.items||[]).forEach(it => {
-                      if (!isDish(it.name)) return;
+                      if (!it.name) return;
                       const key = normName(it.name);
                       const hasCard = recipeLibrary[key] ||
                                       Object.keys(recipeLibrary).find(k => normName(k) === key) ||
@@ -2964,8 +2988,8 @@ function HollNutrition() {
                   </div>
                   {missingCards.length > 0 && (
                     <div style={{padding:'9px 14px',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:9,marginBottom:12,fontSize:12,color:'#92400e',lineHeight:1.7}}>
-                      ⚠ <strong>{missingCards.length} dish{missingCards.length>1?'es':''} missing recipe cards</strong> — PDF will skip these pages.
-                      Use 📋 Reimport Recipes or 🔄 Replace This Dish to add them.
+                      ⚠ <strong>{missingCards.length} item{missingCards.length>1?'s':''} missing recipe cards</strong> — PDF recipe pages will be skipped, and these items won't appear in the computed grocery list.
+                      Add cards via 📋 Reimport Recipes, or create one manually for packaged items.
                       <div style={{marginTop:6,display:'flex',flexWrap:'wrap',gap:6}}>
                         {missingCards.map(([name, days],i) => (
                           <span key={i} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11,padding:'3px 10px',background:'white',border:'1px solid #fde68a',borderRadius:12,fontWeight:600}}>
