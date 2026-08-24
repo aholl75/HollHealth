@@ -201,9 +201,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 const APP_CHANGELOG = [
-  { version: '1.7.0', date: '2026-08-24', notes: 'v1.7.0 — grocery pipeline overhaul complete. Recipe card management: (1) \u201c\ud83d\udce6 Mark as Packaged\u201d button added to ALL recipe cards (not just nutrition-label ones) so a bad re-import (e.g. Claude generating a scratch GoMacro baking recipe) can be corrected retroactively without deleting the card first. Button is hidden once _packaged is set. (2) \u201c\ud83d\uddd1 Delete Card\u201d button added to recipe modal with confirmation dialog \u2014 removes the card from the library and triggers the missing-card warning in the planner so the user can re-import cleanly. Both buttons appear in the card header alongside Prep/Cook/Serves pills. Version bump to 1.7.0 marks completion of the v1.6.x grocery pipeline fix pack (v1.6.0\u20131.6.9: multi-user support, PDF orphan guard, comprehensive backup, smart import locking, buildGroceryFromPlan in planner, skip list, category overrides, normalizeIngName aliases, nutrition-label card detection, fiber edit field, packaged item flow).' },
+  { version: '1.7.1', date: '2026-08-24', notes: 'Recipe button and no-card modal fixes. (1) Recipe button in meal plan now shows for ALL items unconditionally \u2014 previously gated on isDish(), which excluded packaged snacks like GoMacro bar, leaving no way to access the recipe modal after deleting a bad card. (2) No-card recipe modal state redesigned: now shows two side-by-side buttons \u2014 \u201c\ud83d\udcbb Get Recipe from Claude\u201d (existing flow) and \u201c\ud83d\udce6 Mark as Packaged Item\u201d (creates minimal _packaged card instantly without invoking Claude). This completes the packaged item workflow: delete bad card \u2192 Recipe button reappears \u2192 modal shows no-card state \u2192 click Mark as Packaged \u2192 done.' },
+  { version: '1.7.0', date: '2026-08-24', notes: 'v1.7.0 \u2014 grocery pipeline overhaul complete. Recipe card management: (1) \u201c\ud83d\udce6 Mark as Packaged\u201d button added to ALL recipe cards (not just nutrition-label ones) so a bad re-import can be corrected retroactively. (2) \u201c\ud83d\uddd1 Delete Card\u201d button added to recipe modal with confirmation dialog. Both buttons appear in the card header alongside Prep/Cook/Serves pills. Version bump to 1.7.0 marks completion of the v1.6.x grocery pipeline fix pack.' },
   { version: '1.6.9', date: '2026-08-24', notes: 'Packaged item card flow redesigned. The nutrition-label card warning now offers two buttons instead of one: \u201c\u2713 Mark as Packaged Item\u201d creates a minimal card instantly (one ingredient: the item name + plan portion, one step: pre-packaged item, _packaged flag set) without invoking Claude; \u201c\u{1f4cb} Re-import from Claude\u201d retains the previous flow for cases where a real recipe card is genuinely wanted. The _packaged flag is also checked in buildGroceryFromPlan so newly-marked packaged items are always treated as whole-item purchases regardless of their ingredients. Replaces the previous Re-import-only button which caused Claude to generate a scratch recipe for the GoMacro bar.' },
   { version: '1.6.8', date: '2026-08-24', notes: 'GoMacro / packaged bar categorization and re-import flow. (1) BAR_RE pattern added: any item whose display name contains macrobar, macro bar, protein bar, granola bar, snack bar, energy bar, larabar, rxbar, kind bar, clif bar, or quest bar is routed to Other \u2014 fires before CATEGORY_OVERRIDE and routeItem so "peanut" in the name can no longer trigger a false Produce route. (2) Bare "pea" removed from Produce keyword list (too short, caused peanut butter / macrobar false positives); replaced with "snap pea", "snow pea", "pea shoot" for actual produce items. (3) Nutrition-label card warning in recipe modal now includes a \u201c\u{1f4cb} Re-import Recipe Card\u201d button that closes the modal and opens the single-card import flow for that item directly.' },
   { version: '1.6.7', date: '2026-08-24', notes: 'Grocery and card editor fixes from second M14 debug pass. (1) PREP_STRIP_RE extended: "diced and roasted" (compound prep phrase) and "to thin [word]" now stripped, fixing Sweet potato diced and roasted \u2192 Sweet potato and Water to thin tahini being skipped. (2) normalizeIngName: color adjective strip added for bell pepper \u2014 "Red/Green/Yellow/Orange/Purple bell pepper" \u2192 "Bell pepper" so all pepper colors merge into one grocery entry. (3) Nutrition-label card detection: when ALL ingredients in a card are nutrition-label field names (Calories, Total Fat, Saturated Fat, Sodium, etc.), the card is treated as a packaged item \u2014 the plan item name and portion are used directly for grocery list entry instead of expanding the fake ingredients. (4) Nutrition-label field names added to SKIP_EXACT so they never appear as grocery line items even if not caught by card detection. (5) Recipe card view: warning banner shown when a card appears to be built from nutrition label fields instead of real ingredients. (6) Plan item Edit form: Dietary Fiber (Fb) field added as 5th column alongside Cal/P/F/C; fiber value saved through saveEditItem and mirrored to paired days.' },
@@ -3223,7 +3224,7 @@ function HollNutrition() {
                                     style={{padding:'4px 10px',borderRadius:7,fontSize:11,fontWeight:700,border:bad?'1.5px solid #fca5a5':'1px solid #ddd',background:bad?'#fef2f2':'white',color:bad?'#dc2626':'#5a8e6a'}}>
                                     {bad?'⚠ Swap':'↔ Swap'}
                                   </button>
-                                  {(isDish(item.name) || Object.values(recipeLibrary).find(r=>r&&normName(r.name)===normName(item.name)) || currentRecipes.find(r=>r&&normName(r.name||'')===normName(item.name))) && (
+                                  {(isDish(item.name) || Object.values(recipeLibrary).find(r=>r&&normName(r.name)===normName(item.name)) || currentRecipes.find(r=>r&&normName(r.name||'')===normName(item.name)) || true) && (
                                     <button onClick={() => openRecipe(item.name,item.portion)}
                                       title={`View full recipe card for ${item.name} — ingredients, steps, and tips`}
                                       style={{padding:'4px 10px',borderRadius:7,fontSize:11,fontWeight:700,border:'1px solid #ddd',background:'white',color:'#7a7a6a'}}>
@@ -4410,18 +4411,30 @@ function HollNutrition() {
               {!recipe.data && !recipe.loading && !recipe.error && (
                 <div style={{textAlign:'center',padding:32,color:'#7a7a6a'}}>
                   <div style={{fontSize:36,marginBottom:12}}>📋</div>
-                  <div style={{fontSize:14,fontWeight:600,marginBottom:8,color:'#1a1a1a'}}>Recipe not yet imported</div>
-                  <div style={{fontSize:13,marginBottom:8,lineHeight:1.7}}>
-                    This recipe isn't in your saved data yet. Use <strong>📋 Reimport Recipes</strong> in the Planner
-                    to import all recipes for the current month at once.
+                  <div style={{fontSize:14,fontWeight:600,marginBottom:8,color:'#1a1a1a'}}>No recipe card yet</div>
+                  <div style={{fontSize:13,marginBottom:20,lineHeight:1.7}}>
+                    Use <strong>📋 Reimport Recipes</strong> in the Planner to import all recipes for this month at once, or choose an option below for this item only.
                   </div>
-                  <div style={{fontSize:12,color:'#9a9a8a',marginBottom:20}}>
-                    Or get just this one recipe from Claude:
+                  <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                    <button style={S.btn()} onClick={() => {
+                      setShowImport({mode:'recipe', name:recipe.name, portion:recipe.portion});
+                      setRecipe(null);
+                    }}>📋 Get Recipe from Claude</button>
+                    <button style={{...S.btn('sage')}} onClick={() => {
+                      const packagedCard = {
+                        name: recipe.name,
+                        servingSize: recipe.portion || '1 serving',
+                        prepTime: null,
+                        cookTime: null,
+                        ingredients: [{item: recipe.name, amount: recipe.portion || '1 serving'}],
+                        steps: ['Pre-packaged item — purchase as-is. No preparation needed.'],
+                        tip: 'Pre-packaged item.',
+                        _packaged: true,
+                      };
+                      saveRecipeLibrary({...recipeLibrary, [normName(recipe.name)]: packagedCard});
+                      setRecipe({...recipe, data: packagedCard});
+                    }}>📦 Mark as Packaged Item</button>
                   </div>
-                  <button style={S.btn()} onClick={() => {
-                    setShowImport({mode:'recipe', name:recipe.name, portion:recipe.portion});
-                    setRecipe(null);
-                  }}>📋 Get This Recipe from Claude</button>
                 </div>
               )}
               {recipe.error && (
