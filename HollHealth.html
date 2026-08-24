@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.6.7';
+const APP_VERSION = '1.6.8';
 const APP_CHANGELOG = [
+  { version: '1.6.8', date: '2026-08-24', notes: 'GoMacro / packaged bar categorization and re-import flow. (1) BAR_RE pattern added: any item whose display name contains macrobar, macro bar, protein bar, granola bar, snack bar, energy bar, larabar, rxbar, kind bar, clif bar, or quest bar is routed to Other \u2014 fires before CATEGORY_OVERRIDE and routeItem so "peanut" in the name can no longer trigger a false Produce route. (2) Bare "pea" removed from Produce keyword list (too short, caused peanut butter / macrobar false positives); replaced with "snap pea", "snow pea", "pea shoot" for actual produce items. (3) Nutrition-label card warning in recipe modal now includes a \u201c\u{1f4cb} Re-import Recipe Card\u201d button that closes the modal and opens the single-card import flow for that item directly.' },
   { version: '1.6.7', date: '2026-08-24', notes: 'Grocery and card editor fixes from second M14 debug pass. (1) PREP_STRIP_RE extended: "diced and roasted" (compound prep phrase) and "to thin [word]" now stripped, fixing Sweet potato diced and roasted \u2192 Sweet potato and Water to thin tahini being skipped. (2) normalizeIngName: color adjective strip added for bell pepper \u2014 "Red/Green/Yellow/Orange/Purple bell pepper" \u2192 "Bell pepper" so all pepper colors merge into one grocery entry. (3) Nutrition-label card detection: when ALL ingredients in a card are nutrition-label field names (Calories, Total Fat, Saturated Fat, Sodium, etc.), the card is treated as a packaged item \u2014 the plan item name and portion are used directly for grocery list entry instead of expanding the fake ingredients. (4) Nutrition-label field names added to SKIP_EXACT so they never appear as grocery line items even if not caught by card detection. (5) Recipe card view: warning banner shown when a card appears to be built from nutrition label fields instead of real ingredients. (6) Plan item Edit form: Dietary Fiber (Fb) field added as 5th column alongside Cal/P/F/C; fiber value saved through saveEditItem and mirrored to paired days.' },
   { version: '1.6.6', date: '2026-08-24', notes: 'Grocery list audit fixes from M14 debug report review. (1) Skip list expanded: "water to thin tahini", "to taste", "as needed", "cooking spray" now excluded alongside water/salt/ice/pepper. (2) CATEGORY_OVERRIDE table expanded: garlic powder, onion powder, peanut butter, almond butter, sunflower/pumpkin/sesame/hemp/chia/flax seeds all get explicit category assignments to prevent keyword-prefix misfires routing them to Produce. (3) normalizeIngName aliases: "Whole wheat toast" \u2192 "Whole wheat bread" (Grains & Bread), "Baby spinach" \u2192 "Spinach" (deduplicates across cards), "Ginger" alone \u2192 "Ground ginger" (consolidates fresh-grated and ground entries). (4) Missing card warning: isDish() gate removed \u2014 ALL plan items with no card are now flagged (including packaged snacks like GoMacro bars), warning text updated to say "items" not "dishes", and message clarifies items are excluded from grocery list. (5) CAT_KEYS: "toast" added to Grains & Bread; "water" and "protein powder" removed from Beverages. Grocery debug report button location noted: Backup & Sync Data section \u2192 Download Grocery Debug Report.' },
   { version: '1.6.5', date: '2026-07-14', notes: 'Planner grocery list now derives from buildGroceryFromPlan (the same pipeline used by the PDF) instead of the raw AI-imported string list stored in hn_groc. Eliminates discrepancies such as plural raw entries (Bananas, Apples) appearing alongside correctly-computed entries (Banana 7 medium, Apple 5 medium). Derived list updates automatically when the plan or recipe cards change, so swaps are always reflected without a manual grocery re-import. Falls back to stored AI list only if buildGroceryFromPlan returns no categories. Category icon map expanded to cover all current category names including Protein & Beans, Oils & Condiments, and Other.' },
@@ -796,7 +797,7 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     // Ground/powdered spices must be checked BEFORE Produce to prevent e.g.
     // "Ground ginger" routing to Produce via the 'ginger' keyword.
     {name:'Pantry & Spices',     words:['ground ginger','ground cumin','ground coriander','ground cinnamon','ground turmeric','ground paprika','dried oregano','dried basil','dried thyme','dried parsley','dried rosemary','dried sage','dried dill','italian seasoning']},
-    {name:'Produce',             words:['spinach','kale','arugula','lettuce','greens','broccoli','cauliflower','zucchini','pepper','onion','carrot','celery','coleslaw','cabbage','cucumber','potato','sweet potato','squash','asparagus','pea','leek','bok','tomato','beet','mushroom','ginger','garlic','parsley','cilantro','dill','oregano','apple','banana','pear','strawberr','blueberr','blackberr','raspberr','orange','grape','melon','berry','berries','lemon','lime','avocado','mango','fruit']},
+    {name:'Produce',             words:['spinach','kale','arugula','lettuce','greens','broccoli','cauliflower','zucchini','pepper','onion','carrot','celery','coleslaw','cabbage','cucumber','potato','sweet potato','squash','asparagus','snap pea','snow pea','pea shoot','leek','bok','tomato','beet','mushroom','ginger','garlic','parsley','cilantro','dill','oregano','apple','banana','pear','strawberr','blueberr','blackberr','raspberr','orange','grape','melon','berry','berries','lemon','lime','avocado','mango','fruit']},
     {name:'Grains & Bread',      words:['rice','oat','quinoa','bread','toast','pasta','tortilla','flour','noodle','couscous','granola','cracker','pretzel','bagel','corn']},
     {name:'Nuts, Seeds & Nut Butters', words:['walnut','almond','pumpkin seed','sunflower','chia','flax','hemp','peanut','cashew','pecan','pistachio','mixed nut','seed','nut butter','tahini','almond butter','peanut butter','nut']},
     {name:'Dairy & Eggs',        words:['eggs','cheese','milk','butter','cream','yogurt','kefir']},
@@ -888,9 +889,13 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
       'chia seeds':                'Nuts, Seeds & Nut Butters',
       'flax seeds':                'Nuts, Seeds & Nut Butters',
       'ground ginger':             'Pantry & Spices',
+      // Packaged snack bars — any name containing these route to Other
     };
+    // Packaged bar catch: if the display name contains bar/macrobar keywords,
+    // override category to Other regardless of other keyword matches
+    const BAR_RE = /\b(macrobar|macro bar|protein bar|granola bar|snack bar|energy bar|larabar|rxbar|kind bar|clif bar|quest bar)\b/i;
     const normDisplayKey = displayName.toLowerCase().trim();
-    const category = forceCat || CATEGORY_OVERRIDE[normDisplayKey] || routeItem(rawName);
+    const category = forceCat || (BAR_RE.test(displayName) ? 'Other' : null) || CATEGORY_OVERRIDE[normDisplayKey] || routeItem(rawName);
     if (!ingMap.has(key)) {
       ingMap.set(key, {name: displayName, amounts: new Map(), category});
     }
@@ -1162,7 +1167,7 @@ const gapFillGrocery = (grocData, weekPlan) => {
   });
   // Category keywords for auto-routing new items
   const CAT_KEYS = [
-    {name:'Produce',   words:['berry','berries','banana','apple','kale','spinach','greens','tomato','broccoli','asparagus','cauliflower','sprout','potato','zucchini','pepper','onion','carrot','cucumber','corn','bok','celery','lettuce','arugula','pea','leek','squash']},
+    {name:'Produce',   words:['berry','berries','banana','apple','kale','spinach','greens','tomato','broccoli','asparagus','cauliflower','sprout','potato','zucchini','pepper','onion','carrot','cucumber','corn','bok','celery','lettuce','arugula','snap pea','snow pea','pea shoot','leek','squash']},
     {name:'Protein',   words:['tofu','tempeh','edamame','egg','sausage','chickpea','bean','lentil','protein','powder']},
     {name:'Grains',    words:['rice','oat','quinoa','bread','pasta','flour','grain','pancake','granola','couscous']},
     {name:'Nuts, Seeds and Nut Butters', words:['walnut','almond','pumpkin','hemp','chia','peanut','cashew','seed','nut','butter']},
@@ -4436,8 +4441,17 @@ function HollNutrition() {
                       const NFIELDS = /^(calories|total fat|saturated fat|trans fat|sodium|total carbohydrate|dietary fiber|sugars|total sugars|added sugars|protein|cholesterol|vitamin|iron|calcium|potassium)/i;
                       const isNutritionCard = d.ingredients?.length > 0 && d.ingredients.every(ing => NFIELDS.test((ing.item||'').trim()));
                       return isNutritionCard ? (
-                        <div style={{padding:'10px 14px',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:9,marginBottom:14,fontSize:12,color:'#92400e',lineHeight:1.6}}>
-                          ⚠ This card was built using <strong>nutrition label fields</strong> (Calories, Total Fat, etc.) instead of actual ingredients. The grocery list will show this item by name using the plan portion. To fix: delete this card and re-import it with real ingredients, or leave it — the item will appear correctly in the grocery list as a packaged product.
+                        <div style={{padding:'10px 14px',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:9,marginBottom:14,lineHeight:1.6}}>
+                          <div style={{fontSize:12,color:'#92400e',marginBottom:8}}>
+                            ⚠ This card was built using <strong>nutrition label fields</strong> (Calories, Total Fat, etc.) instead of actual ingredients. The grocery list shows this item by name using the plan portion — no action needed. To replace with a proper recipe card, click below.
+                          </div>
+                          <button style={{fontSize:11,fontWeight:700,padding:'5px 12px',borderRadius:7,border:'1px solid #f59e0b',background:'#fffbeb',color:'#92400e',cursor:'pointer'}}
+                            onClick={() => {
+                              setRecipe(null);
+                              setShowImport({mode:'recipe', name:recipe.name, portion:recipe.portion});
+                            }}>
+                            📋 Re-import Recipe Card
+                          </button>
                         </div>
                       ) : null;
                     })()}
