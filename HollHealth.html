@@ -201,8 +201,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.6.8';
+const APP_VERSION = '1.7.0';
 const APP_CHANGELOG = [
+  { version: '1.7.0', date: '2026-08-24', notes: 'v1.7.0 — grocery pipeline overhaul complete. Recipe card management: (1) \u201c\ud83d\udce6 Mark as Packaged\u201d button added to ALL recipe cards (not just nutrition-label ones) so a bad re-import (e.g. Claude generating a scratch GoMacro baking recipe) can be corrected retroactively without deleting the card first. Button is hidden once _packaged is set. (2) \u201c\ud83d\uddd1 Delete Card\u201d button added to recipe modal with confirmation dialog \u2014 removes the card from the library and triggers the missing-card warning in the planner so the user can re-import cleanly. Both buttons appear in the card header alongside Prep/Cook/Serves pills. Version bump to 1.7.0 marks completion of the v1.6.x grocery pipeline fix pack (v1.6.0\u20131.6.9: multi-user support, PDF orphan guard, comprehensive backup, smart import locking, buildGroceryFromPlan in planner, skip list, category overrides, normalizeIngName aliases, nutrition-label card detection, fiber edit field, packaged item flow).' },
+  { version: '1.6.9', date: '2026-08-24', notes: 'Packaged item card flow redesigned. The nutrition-label card warning now offers two buttons instead of one: \u201c\u2713 Mark as Packaged Item\u201d creates a minimal card instantly (one ingredient: the item name + plan portion, one step: pre-packaged item, _packaged flag set) without invoking Claude; \u201c\u{1f4cb} Re-import from Claude\u201d retains the previous flow for cases where a real recipe card is genuinely wanted. The _packaged flag is also checked in buildGroceryFromPlan so newly-marked packaged items are always treated as whole-item purchases regardless of their ingredients. Replaces the previous Re-import-only button which caused Claude to generate a scratch recipe for the GoMacro bar.' },
   { version: '1.6.8', date: '2026-08-24', notes: 'GoMacro / packaged bar categorization and re-import flow. (1) BAR_RE pattern added: any item whose display name contains macrobar, macro bar, protein bar, granola bar, snack bar, energy bar, larabar, rxbar, kind bar, clif bar, or quest bar is routed to Other \u2014 fires before CATEGORY_OVERRIDE and routeItem so "peanut" in the name can no longer trigger a false Produce route. (2) Bare "pea" removed from Produce keyword list (too short, caused peanut butter / macrobar false positives); replaced with "snap pea", "snow pea", "pea shoot" for actual produce items. (3) Nutrition-label card warning in recipe modal now includes a \u201c\u{1f4cb} Re-import Recipe Card\u201d button that closes the modal and opens the single-card import flow for that item directly.' },
   { version: '1.6.7', date: '2026-08-24', notes: 'Grocery and card editor fixes from second M14 debug pass. (1) PREP_STRIP_RE extended: "diced and roasted" (compound prep phrase) and "to thin [word]" now stripped, fixing Sweet potato diced and roasted \u2192 Sweet potato and Water to thin tahini being skipped. (2) normalizeIngName: color adjective strip added for bell pepper \u2014 "Red/Green/Yellow/Orange/Purple bell pepper" \u2192 "Bell pepper" so all pepper colors merge into one grocery entry. (3) Nutrition-label card detection: when ALL ingredients in a card are nutrition-label field names (Calories, Total Fat, Saturated Fat, Sodium, etc.), the card is treated as a packaged item \u2014 the plan item name and portion are used directly for grocery list entry instead of expanding the fake ingredients. (4) Nutrition-label field names added to SKIP_EXACT so they never appear as grocery line items even if not caught by card detection. (5) Recipe card view: warning banner shown when a card appears to be built from nutrition label fields instead of real ingredients. (6) Plan item Edit form: Dietary Fiber (Fb) field added as 5th column alongside Cal/P/F/C; fiber value saved through saveEditItem and mirrored to paired days.' },
   { version: '1.6.6', date: '2026-08-24', notes: 'Grocery list audit fixes from M14 debug report review. (1) Skip list expanded: "water to thin tahini", "to taste", "as needed", "cooking spray" now excluded alongside water/salt/ice/pepper. (2) CATEGORY_OVERRIDE table expanded: garlic powder, onion powder, peanut butter, almond butter, sunflower/pumpkin/sesame/hemp/chia/flax seeds all get explicit category assignments to prevent keyword-prefix misfires routing them to Produce. (3) normalizeIngName aliases: "Whole wheat toast" \u2192 "Whole wheat bread" (Grains & Bread), "Baby spinach" \u2192 "Spinach" (deduplicates across cards), "Ginger" alone \u2192 "Ground ginger" (consolidates fresh-grated and ground entries). (4) Missing card warning: isDish() gate removed \u2014 ALL plan items with no card are now flagged (including packaged snacks like GoMacro bars), warning text updated to say "items" not "dishes", and message clarifies items are excluded from grocery list. (5) CAT_KEYS: "toast" added to Grains & Bread; "water" and "protein powder" removed from Beverages. Grocery debug report button location noted: Backup & Sync Data section \u2192 Download Grocery Debug Report.' },
@@ -979,7 +981,7 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
             return NUTRITION_LABEL_FIELDS_RE.test(nm.trim());
           });
 
-          if (isNutritionLabelCard || (isWholeFood && item.portion)) {
+          if (card._packaged || isNutritionLabelCard || (isWholeFood && item.portion)) {
             // Packaged item or whole-food: add item name + plan portion directly
             addIngredient(name, item.portion || '1');
           } else {
@@ -4432,26 +4434,80 @@ function HollNutrition() {
                 const d = recipe.data;
                 return (
                   <>
-                    <div style={{display:'flex',gap:8,marginBottom:18,flexWrap:'wrap'}}>
+                    <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
                       {[['⏱ Prep',d.prepTime],['🔥 Cook',d.cookTime],['🍽️ Serves',d.servingSize]].filter(([,v])=>v).map(([l,v]) => (
                         <div key={l} style={{padding:'5px 12px',background:'#f4f0e9',borderRadius:20,fontSize:12,fontWeight:600,color:'#555'}}>{l}: {v}</div>
                       ))}
+                      <div style={{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}}>
+                        {!d._packaged && (
+                          <button style={{fontSize:11,fontWeight:700,padding:'4px 10px',borderRadius:7,border:'1px solid #16a34a',background:'#f0fdf4',color:'#15803d',cursor:'pointer'}}
+                            title="Replace this card with a simple packaged-item entry — useful if Claude generated a scratch recipe for a store-bought item"
+                            onClick={() => {
+                              const packagedCard = {
+                                name: recipe.name,
+                                servingSize: recipe.portion || '1 serving',
+                                prepTime: null,
+                                cookTime: null,
+                                ingredients: [{item: recipe.name, amount: recipe.portion || '1 serving'}],
+                                steps: ['Pre-packaged item — purchase as-is. No preparation needed.'],
+                                tip: 'Pre-packaged item.',
+                                _packaged: true,
+                              };
+                              saveRecipeLibrary({...recipeLibrary, [normName(recipe.name)]: packagedCard});
+                              setRecipe({...recipe, data: packagedCard});
+                            }}>
+                            📦 Mark as Packaged
+                          </button>
+                        )}
+                        <button style={{fontSize:11,fontWeight:700,padding:'4px 10px',borderRadius:7,border:'1px solid #fca5a5',background:'#fef2f2',color:'#991b1b',cursor:'pointer'}}
+                          title="Delete this recipe card from the library — the item will show as missing a card in the planner"
+                          onClick={() => {
+                            if (!window.confirm(`Delete the recipe card for "${recipe.name}"? The item will remain in your meal plan but will show as missing a card.`)) return;
+                            const newLib = {...recipeLibrary};
+                            delete newLib[normName(recipe.name)];
+                            saveRecipeLibrary(newLib);
+                            setRecipe(null);
+                          }}>
+                          🗑 Delete Card
+                        </button>
+                      </div>
+                    </div>
                     </div>
                     {(() => {
                       const NFIELDS = /^(calories|total fat|saturated fat|trans fat|sodium|total carbohydrate|dietary fiber|sugars|total sugars|added sugars|protein|cholesterol|vitamin|iron|calcium|potassium)/i;
                       const isNutritionCard = d.ingredients?.length > 0 && d.ingredients.every(ing => NFIELDS.test((ing.item||'').trim()));
                       return isNutritionCard ? (
                         <div style={{padding:'10px 14px',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:9,marginBottom:14,lineHeight:1.6}}>
-                          <div style={{fontSize:12,color:'#92400e',marginBottom:8}}>
-                            ⚠ This card was built using <strong>nutrition label fields</strong> (Calories, Total Fat, etc.) instead of actual ingredients. The grocery list shows this item by name using the plan portion — no action needed. To replace with a proper recipe card, click below.
+                          <div style={{fontSize:12,color:'#92400e',marginBottom:10}}>
+                            ⚠ This card was built using <strong>nutrition label fields</strong> instead of ingredients. The grocery list already handles it correctly — this item appears by name using the plan portion. Choose an action below:
                           </div>
-                          <button style={{fontSize:11,fontWeight:700,padding:'5px 12px',borderRadius:7,border:'1px solid #f59e0b',background:'#fffbeb',color:'#92400e',cursor:'pointer'}}
-                            onClick={() => {
-                              setRecipe(null);
-                              setShowImport({mode:'recipe', name:recipe.name, portion:recipe.portion});
-                            }}>
-                            📋 Re-import Recipe Card
-                          </button>
+                          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            <button style={{fontSize:11,fontWeight:700,padding:'5px 12px',borderRadius:7,border:'1px solid #16a34a',background:'#f0fdf4',color:'#15803d',cursor:'pointer'}}
+                              onClick={() => {
+                                // Create a minimal packaged-item card with just the item name as its single ingredient
+                                const packagedCard = {
+                                  name: recipe.name,
+                                  servingSize: recipe.portion || '1 serving',
+                                  prepTime: null,
+                                  cookTime: null,
+                                  ingredients: [{item: recipe.name, amount: recipe.portion || '1 serving'}],
+                                  steps: ['This is a pre-packaged item. No preparation needed.'],
+                                  tip: 'Pre-packaged item — purchase as-is.',
+                                  _packaged: true,
+                                };
+                                saveRecipeLibrary({...recipeLibrary, [normName(recipe.name)]: packagedCard});
+                                setRecipe({...recipe, data: packagedCard});
+                              }}>
+                              ✓ Mark as Packaged Item
+                            </button>
+                            <button style={{fontSize:11,fontWeight:700,padding:'5px 12px',borderRadius:7,border:'1px solid #f59e0b',background:'#fffbeb',color:'#92400e',cursor:'pointer'}}
+                              onClick={() => {
+                                setRecipe(null);
+                                setShowImport({mode:'recipe', name:recipe.name, portion:recipe.portion});
+                              }}>
+                              📋 Re-import from Claude
+                            </button>
+                          </div>
                         </div>
                       ) : null;
                     })()}
