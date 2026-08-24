@@ -4472,7 +4472,6 @@ function HollNutrition() {
                         </button>
                       </div>
                     </div>
-                    </div>
                     {(() => {
                       const NFIELDS = /^(calories|total fat|saturated fat|trans fat|sodium|total carbohydrate|dietary fiber|sugars|total sugars|added sugars|protein|cholesterol|vitamin|iron|calcium|potassium)/i;
                       const isNutritionCard = d.ingredients?.length > 0 && d.ingredients.every(ing => NFIELDS.test((ing.item||'').trim()));
