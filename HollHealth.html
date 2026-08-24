@@ -201,9 +201,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.6.6';
+const APP_VERSION = '1.6.7';
 const APP_CHANGELOG = [
-  { version: '1.6.6', date: '2026-08-24', notes: 'Grocery list audit fixes from M14 debug report review. (1) Skip list expanded: "water to thin tahini", "to taste", "as needed", "cooking spray" now excluded alongside water/salt/ice/pepper. (2) CATEGORY_OVERRIDE table expanded: garlic powder, onion powder, peanut butter, almond butter, sunflower/pumpkin/sesame/hemp/chia/flax seeds all get explicit category assignments to prevent keyword-prefix misfires routing them to Produce. (3) normalizeIngName aliases: "Whole wheat toast" \u2192 "Whole wheat bread" (Grains & Bread), "Baby spinach" \u2192 "Spinach" (deduplicates across cards), "Ginger" alone \u2192 "Ground ginger" (consolidates fresh-grated and ground entries). (4) Missing card warning: isDish() gate removed \u2014 ALL plan items with no card are now flagged (including packaged snacks like GoMacro bars), warning text updated to say "items" not "dishes", and message clarifies items are excluded from grocery list. (5) CAT_KEYS: "toast" added to Grains & Bread; "water" and "protein powder" removed from Beverages (protein powder now routes via Pantry & Spices). Grocery debug report button location noted: Backup & Sync Data section \u2192 Download Grocery Debug Report.' },
+  { version: '1.6.7', date: '2026-08-24', notes: 'Grocery and card editor fixes from second M14 debug pass. (1) PREP_STRIP_RE extended: "diced and roasted" (compound prep phrase) and "to thin [word]" now stripped, fixing Sweet potato diced and roasted \u2192 Sweet potato and Water to thin tahini being skipped. (2) normalizeIngName: color adjective strip added for bell pepper \u2014 "Red/Green/Yellow/Orange/Purple bell pepper" \u2192 "Bell pepper" so all pepper colors merge into one grocery entry. (3) Nutrition-label card detection: when ALL ingredients in a card are nutrition-label field names (Calories, Total Fat, Saturated Fat, Sodium, etc.), the card is treated as a packaged item \u2014 the plan item name and portion are used directly for grocery list entry instead of expanding the fake ingredients. (4) Nutrition-label field names added to SKIP_EXACT so they never appear as grocery line items even if not caught by card detection. (5) Recipe card view: warning banner shown when a card appears to be built from nutrition label fields instead of real ingredients. (6) Plan item Edit form: Dietary Fiber (Fb) field added as 5th column alongside Cal/P/F/C; fiber value saved through saveEditItem and mirrored to paired days.' },
+  { version: '1.6.6', date: '2026-08-24', notes: 'Grocery list audit fixes from M14 debug report review. (1) Skip list expanded: "water to thin tahini", "to taste", "as needed", "cooking spray" now excluded alongside water/salt/ice/pepper. (2) CATEGORY_OVERRIDE table expanded: garlic powder, onion powder, peanut butter, almond butter, sunflower/pumpkin/sesame/hemp/chia/flax seeds all get explicit category assignments to prevent keyword-prefix misfires routing them to Produce. (3) normalizeIngName aliases: "Whole wheat toast" \u2192 "Whole wheat bread" (Grains & Bread), "Baby spinach" \u2192 "Spinach" (deduplicates across cards), "Ginger" alone \u2192 "Ground ginger" (consolidates fresh-grated and ground entries). (4) Missing card warning: isDish() gate removed \u2014 ALL plan items with no card are now flagged (including packaged snacks like GoMacro bars), warning text updated to say "items" not "dishes", and message clarifies items are excluded from grocery list. (5) CAT_KEYS: "toast" added to Grains & Bread; "water" and "protein powder" removed from Beverages. Grocery debug report button location noted: Backup & Sync Data section \u2192 Download Grocery Debug Report.' },
   { version: '1.6.5', date: '2026-07-14', notes: 'Planner grocery list now derives from buildGroceryFromPlan (the same pipeline used by the PDF) instead of the raw AI-imported string list stored in hn_groc. Eliminates discrepancies such as plural raw entries (Bananas, Apples) appearing alongside correctly-computed entries (Banana 7 medium, Apple 5 medium). Derived list updates automatically when the plan or recipe cards change, so swaps are always reflected without a manual grocery re-import. Falls back to stored AI list only if buildGroceryFromPlan returns no categories. Category icon map expanded to cover all current category names including Protein & Beans, Oils & Condiments, and Other.' },
   { version: '1.6.4', date: '2026-07-14', notes: 'Help content updated to match v1.6.0\u2013v1.6.3 features. Help step 10 (Back up and sync) rewritten to describe comprehensive export, auto-locking on import, and the new Import Library Only option for new users. Process flow cards updated: Generate a new month plan now lists firstName/programStart in Preferences setup; Backup & restore data expanded to 6 steps covering auto-locking and new-user library import; Add or view a recipe card corrected to reference Import Library Only instead of the legacy \u201c12-month backup JSON\u201d phrasing. Version numbering convention (X.Y.Z) added to handoff: X=major, Y=fix pack, Z=single fix. v1.5.60\u2013v1.5.64 retroactively renumbered to v1.6.0\u2013v1.6.4 to correctly reflect that multi-user support features constitute a minor release, not individual bug patches.' },
   { version: '1.6.3', date: '2026-07-14', notes: 'Smart import locking and new-user library-only flow. Full import now computes the current month automatically from programStart + today using monDateRange, locks all prior months (true), sets the current month unlocked (false), and opens the app on the current month \u2014 ignoring whatever locked state was in the backup file. totalMon is set to the max of plan keys or the computed current month. A second \u201cImport Library Only\u201d file input is available for new users: imports only recipe_library and recipes_by_month, leaves all plans, macros, prefs, progress, and health untouched, and directs the user to Preferences to complete setup.' },
@@ -743,7 +744,7 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
   //      "Corn tortillas, small (6-inch)" → "Corn tortillas, small" (size kept, parens stripped)
   //      "White beans (cannellini), cooked" → "White beans (cannellini)" (variety parens kept)
   // PREP_STRIP_RE: strips ONLY preparation/state verbs after comma, not size qualifiers
-  const PREP_STRIP_RE = /,\s*(diced|sliced|chopped|minced|grated|cubed|mashed|baked|thawed|frozen|rinsed|drained(?:\s+and\s+rinsed)?|cooked|canned(?:[\s,].*)?|dry|dried|raw|unsalted|unsweetened|low.sodium|old.fashioned|roughly|shelled|shredded|crumbled|peeled|trimmed|halved|quartered|torn|roughly\s+chopped|finely\s+chopped|thinly\s+sliced|finely\s+diced)(\s*(?:\([^)]*\))?\s*(?:,.*)?)?$/i;
+  const PREP_STRIP_RE = /,\s*(diced(?:\s+and\s+roasted)?|sliced|chopped|minced|grated|cubed|mashed|baked|thawed|frozen|rinsed|drained(?:\s+and\s+rinsed)?|cooked|canned(?:[\s,].*)?|dry|dried|raw|unsalted|unsweetened|low.sodium|old.fashioned|roughly|shelled|shredded|crumbled|peeled|trimmed|halved|quartered|torn|roughly\s+chopped|finely\s+chopped|thinly\s+sliced|finely\s+diced|to\s+thin\s+\w+|to\s+taste|as\s+needed)(\s*(?:\([^)]*\))?\s*(?:,.*)?)?$/i;
   // Measurement/size parens at end: (6-inch), (3" dia), (25g), (120mL) — strip these
   // Variety/descriptor parens mid-string: (cannellini), (thawed) after verb already stripped — keep
   const MEAS_PAREN_RE = /\s*\(\s*[\d][^)]*\)\s*$|\s*\([^)]*(?:inch|oz\b|ml\b|cm\b|dia)\s*[^)]*\)\s*$/i;
@@ -754,6 +755,8 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     let n = rawName.trim();
     // Strip prep verbs after comma (keeps size qualifiers like "small", "large", "mini")
     n = n.replace(PREP_STRIP_RE, '');
+    // Strip leading color adjectives from bell pepper so "Red bell pepper" -> "Bell pepper"
+    n = n.replace(/^(?:Red|Green|Yellow|Orange|Purple)\s+(bell\s+pepper)/i, '$1').trim();
     // Strip leading "Fresh " unless it precedes a herb name
     n = n.replace(/^[Ff]resh\s+(?!herb|mint|basil|parsley|cilantro|dill|thyme|rosemary|sage|oregano)/, '').trim();
     // Strip trailing measurement/size parentheticals (6-inch), (25g) — but keep (cannellini)
@@ -864,6 +867,12 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
       'salt and pepper to taste','to taste','cooking spray','water to thin tahini'];
     if (SKIP_EXACT.some(s => key === s || key.startsWith(s + ' '))) return;
     if (/^\s*to taste\s*$/i.test(rawName) || /^\s*as needed\s*$/i.test(rawName)) return;
+    // Skip nutrition-label field names that appear when a packaged item's card was built
+    // using the nutrition facts panel instead of actual ingredients.
+    const NUTRITION_LABEL_FIELDS = ['calories','total fat','saturated fat','trans fat',
+      'sodium','total carbohydrate','dietary fiber','sugars','total sugars','added sugars',
+      'protein','cholesterol','vitamin','iron','calcium','potassium'];
+    if (NUTRITION_LABEL_FIELDS.some(f => key === f || key.startsWith(f + ' '))) return;
     // Route on RAW name to preserve 'frozen' signal, then apply overrides for items
     // that should always be in the same aisle regardless of preparation form.
     const CATEGORY_OVERRIDE = {
@@ -956,9 +965,18 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
           const isWholeFood = isSingle && (siL.includes(nameL) || nameL.includes(siL) ||
             siL.replace(/s$/,'') === nameL.replace(/s$/,'') || sharedLead);
 
-          if (isWholeFood && item.portion) {
-            // Use plan's portion and item name directly (avoids card quantity errors)
-            addIngredient(name, item.portion);
+          // Detect packaged-item cards built from nutrition label fields rather than ingredients.
+          // If every ingredient name looks like a nutrition label field, treat the card as
+          // a whole-item purchase (like GoMacro bar) and add item name + portion directly.
+          const NUTRITION_LABEL_FIELDS_RE = /^(calories|total fat|saturated fat|trans fat|sodium|total carbohydrate|dietary fiber|sugars|total sugars|added sugars|protein|cholesterol|vitamin|iron|calcium|potassium)/i;
+          const isNutritionLabelCard = card.ingredients.length > 0 && card.ingredients.every(ing => {
+            const nm = typeof ing === 'string' ? parseStringIngredient(ing).ingName : (ing.item || '');
+            return NUTRITION_LABEL_FIELDS_RE.test(nm.trim());
+          });
+
+          if (isNutritionLabelCard || (isWholeFood && item.portion)) {
+            // Packaged item or whole-food: add item name + plan portion directly
+            addIngredient(name, item.portion || '1');
           } else {
             card.ingredients.forEach(ing => {
               let ingName, ingAmt;
@@ -1708,6 +1726,7 @@ function HollNutrition() {
       protein: +form.protein || 0,
       fat: +form.fat || 0,
       carbs: +form.carbs || 0,
+      fiber: +form.fiber || 0,
     };
     recalc(np[mon][di]);
     if(di===0){np[mon][3]=JSON.parse(JSON.stringify(np[mon][0]));np[mon][3].dayNumber=4;}
@@ -3206,7 +3225,7 @@ function HollNutrition() {
                                   )}
                                   <button
                                     title={`Edit calories, macros, or name for ${item.name}`}
-                                    onClick={() => setEditItem({di:day-1,mi,ii,form:{name:item.name,portion:item.portion||'',calories:item.calories,protein:item.protein,fat:item.fat,carbs:item.carbs}})}
+                                    onClick={() => setEditItem({di:day-1,mi,ii,form:{name:item.name,portion:item.portion||'',calories:item.calories,protein:item.protein,fat:item.fat,carbs:item.carbs,fiber:item.fiber||0}})}
                                     style={{padding:'4px 10px',borderRadius:7,fontSize:11,fontWeight:700,border:'1px solid #ddd',background:'white',color:'#7a7a6a'}}>
                                     ✏️ Edit
                                   </button>
@@ -3222,8 +3241,8 @@ function HollNutrition() {
                               <input value={editItem.form.portion} placeholder="Portion"
                                 style={{...S.inp,marginBottom:8,fontSize:12}}
                                 onChange={e=>setEditItem(p=>({...p,form:{...p.form,portion:e.target.value}}))}/>
-                              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,marginBottom:10}}>
-                                {[['Cal','calories','#1a1a1a'],['P (g)','protein','#3b82f6'],['F (g)','fat','#f59e0b'],['C (g)','carbs','#10b981']].map(([lbl,key,col])=>(
+                              <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:10}}>
+                                {[['Cal','calories','#1a1a1a'],['P (g)','protein','#3b82f6'],['F (g)','fat','#f59e0b'],['C (g)','carbs','#10b981'],['Fb (g)','fiber','#8b5cf6']].map(([lbl,key,col])=>(
                                   <div key={key}>
                                     <div style={{fontSize:10,color:col,fontWeight:700,marginBottom:3}}>{lbl}</div>
                                     <input type="number" min="0" value={editItem.form[key]}
@@ -4413,6 +4432,15 @@ function HollNutrition() {
                         <div key={l} style={{padding:'5px 12px',background:'#f4f0e9',borderRadius:20,fontSize:12,fontWeight:600,color:'#555'}}>{l}: {v}</div>
                       ))}
                     </div>
+                    {(() => {
+                      const NFIELDS = /^(calories|total fat|saturated fat|trans fat|sodium|total carbohydrate|dietary fiber|sugars|total sugars|added sugars|protein|cholesterol|vitamin|iron|calcium|potassium)/i;
+                      const isNutritionCard = d.ingredients?.length > 0 && d.ingredients.every(ing => NFIELDS.test((ing.item||'').trim()));
+                      return isNutritionCard ? (
+                        <div style={{padding:'10px 14px',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:9,marginBottom:14,fontSize:12,color:'#92400e',lineHeight:1.6}}>
+                          ⚠ This card was built using <strong>nutrition label fields</strong> (Calories, Total Fat, etc.) instead of actual ingredients. The grocery list will show this item by name using the plan portion. To fix: delete this card and re-import it with real ingredients, or leave it — the item will appear correctly in the grocery list as a packaged product.
+                        </div>
+                      ) : null;
+                    })()}
                     <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:10,color:'#1b3d2a'}}>Ingredients</div>
                     <div style={{marginBottom:18}}>
                       {d.ingredients?.map((ing,i) => (
