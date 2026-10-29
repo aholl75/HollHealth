@@ -201,8 +201,10 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.1';
 const APP_CHANGELOG = [
+  { version: '1.8.1', date: '2026-10-29', notes: 'Health section data persistence fix. Root cause: saveAppt matched on appt.id to find existing entries, but default appointment types (Annual Physical, Blood Work, etc.) start with id:null. Every save on a default type returned findIndex=-1 and created a new duplicate entry rather than updating the existing one, so logged visit dates accumulated as unseen duplicates — the visible card always showed the first match from allTypes merge, which might be stale. Fix: saveAppt now matches by type when id is null, and preserves or assigns a real id on save so subsequent edits match correctly. Also: export panel now shows a live data count (months of plans, health visits logged, progress entries) so you can confirm health data is present before downloading.' },
+  { version: '1.8.0', date: '2026-10-29', notes: 'Planner layout redesign and grocery pipeline fixes from M16 review. Layout: (1) Action buttons (Build from Library, Random Package, Reimport Week Plan, Reimport Recipes, Regenerate Day) collapsed into a single \u201c\u2699 Actions \u25be\u201d dropdown menu \u2014 reduces header clutter and puts meal cards immediately visible on open. (2) Day pills changed from horizontal scroll to flex-wrap so all 7 days are visible on mobile without scrolling. (3) Custom Targets card moved from above the day pills to just above the Grocery List section \u2014 only needed when first setting targets, not every session. (4) Month strip date range label removed \u2014 caused confusion when cycles ran long. Grocery: (5) CATEGORY_OVERRIDE additions: sesame ginger dressing, toasted sesame oil, store-bought vinaigrette, rice vinegar \u2192 Oils & Condiments; mixed berries \u2192 Frozen (always purchased frozen); veggie straws \u2192 Other. (6) normalizeIngName aliases: Carrots \u2192 Carrot, Zucchini sliced into half-moons \u2192 Zucchini, Raw celery \u2192 Celery, Green onion \u2192 Green onions. (7) Produce small\u2192medium unit alias in consolidateVolume so "1/2 small zucchini" entries merge correctly with other zucchini entries. Version bump to 1.8.0 marks a new fix pack for layout and grocery improvements.' },
   { version: '1.7.1', date: '2026-08-24', notes: 'Recipe button and no-card modal fixes. (1) Recipe button in meal plan now shows for ALL items unconditionally \u2014 previously gated on isDish(), which excluded packaged snacks like GoMacro bar, leaving no way to access the recipe modal after deleting a bad card. (2) No-card recipe modal state redesigned: now shows two side-by-side buttons \u2014 \u201c\ud83d\udcbb Get Recipe from Claude\u201d (existing flow) and \u201c\ud83d\udce6 Mark as Packaged Item\u201d (creates minimal _packaged card instantly without invoking Claude). This completes the packaged item workflow: delete bad card \u2192 Recipe button reappears \u2192 modal shows no-card state \u2192 click Mark as Packaged \u2192 done.' },
   { version: '1.7.0', date: '2026-08-24', notes: 'v1.7.0 \u2014 grocery pipeline overhaul complete. Recipe card management: (1) \u201c\ud83d\udce6 Mark as Packaged\u201d button added to ALL recipe cards (not just nutrition-label ones) so a bad re-import can be corrected retroactively. (2) \u201c\ud83d\uddd1 Delete Card\u201d button added to recipe modal with confirmation dialog. Both buttons appear in the card header alongside Prep/Cook/Serves pills. Version bump to 1.7.0 marks completion of the v1.6.x grocery pipeline fix pack.' },
   { version: '1.6.9', date: '2026-08-24', notes: 'Packaged item card flow redesigned. The nutrition-label card warning now offers two buttons instead of one: \u201c\u2713 Mark as Packaged Item\u201d creates a minimal card instantly (one ingredient: the item name + plan portion, one step: pre-packaged item, _packaged flag set) without invoking Claude; \u201c\u{1f4cb} Re-import from Claude\u201d retains the previous flow for cases where a real recipe card is genuinely wanted. The _packaged flag is also checked in buildGroceryFromPlan so newly-marked packaged items are always treated as whole-item purchases regardless of their ingredients. Replaces the previous Re-import-only button which caused Claude to generate a scratch recipe for the GoMacro bar.' },
@@ -773,6 +775,15 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     n = n.replace(/^[Pp]lant[- ]based\s+/i, '');
     // Normalise "Whole wheat toast" -> "Whole wheat bread" (same shopping item)
     n = n.replace(/^Whole\s+wheat\s+toast$/i, 'Whole wheat bread');
+    // Normalise plural "Carrots" -> "Carrot" (dedup across cards)
+    n = n.replace(/^Carrots$/i, 'Carrot');
+    // Normalise "Zucchini, sliced into half-moons" -> "Zucchini" (prep strip may not catch this compound)
+    n = n.replace(/^Zucchini,?\s+sliced\s+into\s+half.moons?$/i, 'Zucchini');
+    // Normalise "Raw celery" -> "Celery"
+    n = n.replace(/^Raw\s+celery$/i, 'Celery');
+    // Normalise "Green onion" -> "Green onions" (standardise plural)
+    n = n.replace(/^Green\s+onion$/i, 'Green onions');
+    // Normalise "Sesame ginger dressing" — keep as-is but ensure it routes to Oils & Condiments via CATEGORY_OVERRIDE
     // Normalise "Baby spinach" -> "Spinach" (same produce item)
     n = n.replace(/^Baby\s+spinach$/i, 'Spinach');
     // Normalise "Ginger, grated" / "Fresh ginger" -> "Ground ginger" for shopping
@@ -892,6 +903,16 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
       'chia seeds':                'Nuts, Seeds & Nut Butters',
       'flax seeds':                'Nuts, Seeds & Nut Butters',
       'ground ginger':             'Pantry & Spices',
+      // Dressings, flavored oils, vinegars — always Oils & Condiments not Produce/Grains
+      'sesame ginger dressing':    'Oils & Condiments',
+      'toasted sesame oil':        'Oils & Condiments',
+      'store-bought vinaigrette':  'Oils & Condiments',
+      'vinaigrette':               'Oils & Condiments',
+      'rice vinegar':              'Oils & Condiments',
+      // Mixed berries always purchased frozen
+      'mixed berries':             'Frozen',
+      // Veggie straws — packaged snack, not a spice
+      'veggie straws':             'Other',
       // Packaged snack bars — any name containing these route to Other
     };
     // Packaged bar catch: if the display name contains bar/macrobar keywords,
@@ -1067,6 +1088,12 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
       get('medium').qty += get('ct').qty;
       del('ct');
     }
+    // small → medium for whole vegetables (cards sometimes say "1/2 small zucchini")
+    if (isProduce && has('small') && !has('medium')) {
+      if (!entry.amounts.has('medium')) entry.amounts.set('medium', {qty:0,gram:0,unit:'medium'});
+      entry.amounts.get('medium').qty += entry.amounts.get('small').qty;
+      entry.amounts.delete('small');
+    }
     // ct → cup when cup also present and no medium (1 bell pepper = 1 cup)
     if (isProduce && has('ct') && has('cup') && !has('medium')) {
       get('cup').qty += get('ct').qty;
@@ -1238,6 +1265,7 @@ function HollNutrition() {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [showEditT,setShowEditT]= useState(false);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [totalMon, setTotalMon] = useState(1);
   const [rfilt,    setRfilt]    = useState('');
@@ -2516,15 +2544,15 @@ function HollNutrition() {
                 ['1','Select your month','Click a month button in the MONTH strip. M1–M9 are past months — selecting one shows the 📊 History view with macro targets and trends, locked by default. M10+ are current/future — selecting one shows the 📋 Planner. M10–M12 show projected targets (◈) until you enter real ones.','#3b82f6'],
                 ['2','Set up Preferences first','Go to ⚙️ Preferences before generating any plans. Choose your Diet Mode (🌱 Vegetarian or 🍖 Omnivore) — this controls which proteins appear in plans and how items are flagged. Then enter your height, age, activity level, and goal. The tool calculates your calorie target automatically from your latest logged weight. Add foods to Always Include or Prefer Often, review your Avoid list, and set your preferred Theme and Layout.','#8b5cf6'],
                 ['3','Macro targets for new months','For M10–M12, click + Enter Real Targets in the ◈ banner when your nutritionist provides them. For M13 and beyond, macros are automatically seeded from the prior month as a baseline — adjust them in the Planner if your goal changes. Days 4/5/6 always auto-mirror Days 1/2/3.','#6366f1'],
-                ['4','Generate a new month plan','In the Planner, click ✦ Build from Library to generate a plan using your existing 12-month recipe library — this is the preferred flow. Or use 🎲 Random Package from Claude to have Claude invent new dishes freely. Copy the prompt, paste into claude.ai, paste the JSON back, and click ✓ Import.','#10b981'],
+                ['4','Generate a new month plan','In the Planner, open the ⚙ Actions ▾ dropdown at the top right and choose ✦ Build from Library (preferred — draws from your existing recipe library) or 🎲 Random Package from Claude (Claude invents new dishes freely). Copy the prompt, paste into claude.ai, paste the JSON back, and click ✓ Import.','#10b981'],
                 ['5','Download your PDF','After importing, click ⬇ Download PDF in the Planner to generate the full package: Weekly Overview, Grocery List, Daily Breakouts, and Recipe pages. The Weekly Overview shows dish names as single checkboxes for easy tracking.','#f59e0b'],
                 ['6','Review your grocery list','The Grocery List appears at the bottom of the Planner tab. Check items off as you shop. It also prints on Page 2 of the PDF. Note: whole fruits (banana, apple, etc.) are counted per occasion — each appearance in a recipe card counts as 1 to buy, regardless of whether the card says ½ or 1, because you can\u2019t save half a banana between days.','#ec4899'],
-                ['7','Import parts separately','Use 📋 Reimport Week Plan or 📋 Reimport Recipes in the Planner to update just one section. Use 📋 Regenerate Day N to replace a single day. Use 📋 Import Grocery List to update the grocery list independently.','#f97316'],
+                ['7','Import parts separately','Open ⚙ Actions ▾ in the Planner to access Reimport Week Plan, Reimport Recipes, and Regenerate Day N — these update just one section without changing the rest of your plan. The grocery list updates automatically whenever the plan or recipe cards change.','#f97316'],
                 ['8','Swap or edit a meal item','In the Planner, click ↔ Swap on any food item to open the swap panel. 📖 Food Swap Bible shows pre-defined substitutions. ✨ AI Suggestions generates macro-matched alternatives. Click ✏️ Edit to correct a name, calorie value, or macro — totals recalculate automatically.','#f97316'],
                 ['9','Lock and unlock months','Past months (M1–M9) are locked by default. Current and future months can be locked via 🔓 Lock Month in the Planner once a plan is complete. Locked months are protected from accidental edits.','#5a3e9a'],
                 ['10','Back up and sync','Click 💾 Backup in the header to download a complete backup: all months of plans, recipe library, progress entries, health appointments, and every preference. To restore on any device: 💾 Backup → ⬆ Choose File. Prior months are locked automatically based on today and your program start date. New users can use 📚 Import Library Only to get the recipe cards without inheriting another user\'s plans or preferences.','#0891b2'],
                 ['11','Log your weekly weight','Go to 📓 Progress. Enter date and weight and click + Save Entry. Use ✏️ Edit on any entry to correct a typo. Entries power the automatic calorie calculation in Preferences and the weight trend chart.','#1b3d2a'],
-                ['12','Track health appointments','Go to 🏥 Health. Log your last visit date for each appointment type and click 📅 Remind Me to download a .ics calendar reminder for Outlook or Google Calendar. The summary strip shows overdue and upcoming items at a glance.','#dc2626'],
+                ['12','Track health appointments','Go to 🏥 Health. Click ✏️ Log Visit on any appointment type, enter the date, interval, and notes, then click ✓ Save — each appointment type saves independently so entries persist correctly. Click 📅 Remind Me to download a .ics reminder for Outlook or Google Calendar. The summary strip shows overdue and upcoming items at a glance. Check the export panel data count before backing up to confirm your visits are saved.','#dc2626'],
               ].map(([n,title,desc,color]) => (
                 <div key={n} style={{padding:'12px 14px',background:'#faf8f4',borderRadius:11,borderLeft:`4px solid ${color}`}}>
                   <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:5}}>
@@ -2556,11 +2584,11 @@ function HollNutrition() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 {[
                   ['🆕 Generate a new month plan',
-                   '1. Set up ⚙️ Preferences (name, height, age, goal, avoid/limit lists, program start date)\n2. In 📋 Planner, select the new month\n3. Click ✦ Build from Library (preferred) or 🎲 Random Package from Claude\n4. Copy the prompt → paste into claude.ai\n5. Copy the JSON response → paste back → ✓ Import\n6. Review the week, swap any items, then 🔒 Lock Month'],
+                   '1. Set up ⚙️ Preferences (name, height, age, goal, avoid/limit lists, program start date)\n2. In 📋 Planner, select the new month\n3. Open ⚙ Actions ▾ → choose ✦ Build from Library (preferred) or 🎲 Random Package from Claude\n4. Copy the prompt → paste into claude.ai\n5. Copy the JSON response → paste back → ✓ Import\n6. Review the week, swap any items, then 🔒 Lock Month'],
                   ['🔄 Swap a meal item',
                    '1. In 📋 Planner, find the item and click ↔ Swap\n2. Use 📖 Swap Bible tabs for quick alternatives\n3. Or use ✨ AI Suggestions: copy prompt → claude.ai → paste JSON → ✓ Use\n4. Click a card to apply the swap (mirrors to Day +3 automatically)'],
                   ['💾 Backup & restore data',
-                   '1. Click 💾 Backup in the header → ⬇ Download Backup\n2. Saves everything: all months of plans, recipes, progress, health, and all preferences\n3. To restore on any device: 💾 Backup → ⬆ Choose File → select the .json file\n4. Prior months are locked automatically from your program start date — current month stays open\n5. New user on a shared app? Use 📚 Import Library Only to get recipes without another user\'s data\n6. Back up after every new month plan or major change'],
+                   '1. Click 💾 Backup in the header → ⬇ Download Backup\n2. Check the data summary (months, health visits, progress entries) shown above the button to confirm your data is present\n3. Saves everything: all months of plans, recipes, progress, health appointments, and all preferences\n4. To restore on any device: 💾 Backup → ⬆ Choose File → select the .json file\n5. Prior months are locked automatically from your program start date — current month stays open\n6. New user on a shared app? Use 📚 Import Library Only to get recipes without another user\'s data'],
                   ['📖 Add or view a recipe card',
                    '1. Go to 🍽️ Recipes tab\n2. Click any card tile to view ingredients and steps\n3. Missing a card? Use 💾 Backup → 📚 Import Library Only with any backup file\n4. New recipes from ✦ Build from Library or 🎲 Random Package auto-populate the library\n5. Add your own recipes via 📖 Recipes → Add Recipes to Library'],
                 ].map(([title, steps]) => (
@@ -2630,10 +2658,7 @@ function HollNutrition() {
           + M{totalMon+1}
         </button>
         {mon===6 && <span style={{fontSize:11,color:'#9a9a8a',whiteSpace:'nowrap',flexShrink:0}}>★ identical macros to Month 2</span>}
-        {(() => {
-          const dr = monDateRange(mon, prefs.programStart);
-          return dr ? <span style={{fontSize:11,color:'#9a9a8a',whiteSpace:'nowrap',flexShrink:0}}>{dr.label}</span> : null;
-        })()}
+{/* Date range label removed — month boundaries caused confusion when cycles ran long */}
         {isProj && <span style={{fontSize:11,color:'#92400e',whiteSpace:'nowrap',flexShrink:0,fontWeight:600}}>{mon > 12 ? `◈ seeded from M${mon-1}${calcSeed ? ` · scaled to ${latestNoteWeight} lbs` : ' · log weight to enable scaling'}` : '◈ projected — enter real targets in the Planner when available'}</span>}
       </div>
 
@@ -2781,33 +2806,42 @@ function HollNutrition() {
                 <h1 style={S.h1}>Month {mon} — AI Planner</h1>
                 <p style={S.sub}>Meals calibrated to each day's exact macro targets.</p>
               </div>
-              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-
-                <button style={{...S.btn('sage'),padding:'8px 16px',fontSize:13,fontWeight:700}}
-                  title="Build a new month plan by selecting dishes from your existing 12-month recipe library. Only introduces new recipes when no library option fits a slot."
-                  onClick={() => setShowImport({mode:'libpackage', mon, library:recipeLibrary})}>
-                  ✦ Build from Library
-                </button>
-                <button style={{...S.btn('out'),padding:'8px 14px',fontSize:12}}
-                  title="Generate a completely new month plan from scratch — Claude invents new dishes freely without drawing from your existing library"
-                  onClick={() => setShowImport({mode:'fullpackage', mon})}>
-                  🎲 Random Package from Claude
-                </button>
-                <button style={{...S.btn('sage'),padding:'8px 14px',fontSize:12}}
-                  title="Regenerate just the 7-day meal plan without changing your grocery list or recipes"
-                  onClick={genWeek}>
-                  📋 Reimport Week Plan
-                </button>
-                <button style={{...S.btn('sage'),padding:'8px 14px',fontSize:12}}
-                  title="Import or refresh recipe cards for this month without changing any meals or grocery data"
-                  onClick={() => setShowImport({mode:'recipesonly', mon})}>
-                  📋 Reimport Recipes
-                </button>
-                <button style={{...S.btn('sage'),padding:'8px 14px',fontSize:12}}
-                  title={`Replace just Day ${day} with a newly generated meal — mirrors to its paired day automatically`}
-                  onClick={() => genOne(day)}>
-                  📋 Regenerate Day {day}
-                </button>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',position:'relative'}}>
+                {/* Collapsible actions menu */}
+                <div style={{position:'relative'}}>
+                  <button style={{...S.btn('sage'),padding:'8px 14px',fontSize:13,fontWeight:700}}
+                    onClick={() => setShowActionsMenu(p=>!p)}>
+                    ⚙ Actions {showActionsMenu?'▲':'▾'}
+                  </button>
+                  {showActionsMenu && (
+                    <div style={{position:'absolute',top:'100%',left:0,marginTop:4,zIndex:120,
+                      background:'white',border:'1px solid #b8d4c8',borderRadius:12,
+                      boxShadow:'0 8px 24px rgba(0,0,0,0.12)',minWidth:240,overflow:'hidden'}}>
+                      {[
+                        ['✦ Build from Library','Build a new plan from your existing recipe library',
+                          () => { setShowImport({mode:'libpackage', mon, library:recipeLibrary}); setShowActionsMenu(false); }],
+                        ['🎲 Random Package from Claude','Generate a completely new plan — Claude invents new dishes freely',
+                          () => { setShowImport({mode:'fullpackage', mon}); setShowActionsMenu(false); }],
+                        ['📋 Reimport Week Plan','Regenerate just the 7-day meal plan',
+                          () => { genWeek(); setShowActionsMenu(false); }],
+                        ['📋 Reimport Recipes','Refresh recipe cards without changing meals',
+                          () => { setShowImport({mode:'recipesonly', mon}); setShowActionsMenu(false); }],
+                        [`📋 Regenerate Day ${day}`,`Replace Day ${day} with a new meal`,
+                          () => { genOne(day); setShowActionsMenu(false); }],
+                      ].map(([label, tip, fn], i) => (
+                        <button key={i} title={tip}
+                          style={{display:'block',width:'100%',textAlign:'left',padding:'11px 16px',
+                            fontSize:13,fontWeight:600,border:'none',borderBottom:i<4?'1px solid #f0ece4':'none',
+                            background:'white',color:'#1b3d2a',cursor:'pointer'}}
+                          onMouseEnter={e => e.currentTarget.style.background='#f0f7f0'}
+                          onMouseLeave={e => e.currentTarget.style.background='white'}
+                          onClick={fn}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {plans[mon] && plans[mon].filter(Boolean).length >= 7 && (
                   <button style={{...S.btn('sage'),padding:'8px 14px',fontSize:12}}
                     title="Generate the PDF package: Weekly Overview, Grocery List, Daily Breakouts, and Recipes"
@@ -3033,90 +3067,8 @@ function HollNutrition() {
               );
             })()}
 
-            {/* Projected targets entry — M10–12 and beyond until real data entered */}
-            {(PROJECTED.has(mon) || mon > 12) && (
-              <div style={{...S.card,border:`1.5px solid ${customT[mon]?'#b8d4c8':'#fde68a'}`,background:customT[mon]?'#f0f7f0':'#fffbeb',marginBottom:14}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:showEditT?14:0}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:13,color:customT[mon]?'#1b3d2a':'#92400e'}}>
-                      {customT[mon]?`✓ Custom targets saved for Month ${mon}`:`◈ Month ${mon} — targets seeded from Month ${mon-1}`}
-                    </div>
-                    <div style={{fontSize:12,color:'#7a7a6a',marginTop:2}}>
-                      {(() => {
-                        if (customT[mon]) return 'Overrides seeded values.';
-                        if (mon <= 12) return 'Enter real targets when your nutritionist provides them.';
-                        if (!calcSeed) return `Using Month ${mon-1} macros as baseline. Log a weight in 📓 Progress to enable automatic calorie scaling.`;
-                        const gw = prefs.goalWeight ? +prefs.goalWeight : null;
-                        const cw = +latestNoteWeight;
-                        const gap = gw ? +(cw - gw).toFixed(1) : null;
-                        const adjLabel = gap === null ? 'full −250 cal deficit (set a goal weight in Preferences for smarter scaling)'
-                          : gap <= 0 ? `at or below goal weight — seeded at maintenance (${calcSeed.maintenance} cal/day)`
-                          : gap <= 5 ? `${gap} lbs from goal — half deficit seeded (−125 cal/day)`
-                          : `${gap} lbs from goal — full deficit seeded (−250 cal/day)`;
-                        return `Scaled to ${cw} lbs · ${adjLabel}. Adjust in edit form if needed.`;
-                      })()}
-                    </div>
-                  </div>
-                  <div style={{display:'flex',gap:8}}>
-                    {customT[mon] && (
-                      <button style={{...S.btn('red'),fontSize:12,padding:'6px 12px'}}
-                        title="Remove custom targets and revert to projected values for this month"
-                        onClick={async () => { const t={...customT}; delete t[mon]; await saveCustomT(t); setShowEditT(false); }}>
-                        Reset
-                      </button>
-                    )}
-                    <button style={{...S.btn(showEditT?'out':'sage'),fontSize:12,padding:'6px 14px'}}
-                      title={showEditT?'Discard changes':customT[mon]?'Edit the saved macro targets for this month':'Enter the real macro targets from your nutritionist for this month'}
-                      onClick={() => {
-                        if (!showEditT) {
-                          const src = customT[mon] || MONTH_DATA[mon] || seededData || customT[mon-1] || MONTH_DATA[mon-1] || MONTH_DATA[9];
-                          const f={};
-                          [1,2,3,7].forEach(d => { f[`d${d}_cal`]=src[d].cal; f[`d${d}_p`]=src[d].p; f[`d${d}_f`]=src[d].f; f[`d${d}_c`]=src[d].c; f[`d${d}_fb`]=src[d].fb; });
-                          setEditForm(f);
-                        }
-                        setShowEditT(!showEditT);
-                      }}>
-                      {showEditT?'Cancel':customT[mon]?'Edit':'+ Enter Real Targets'}
-                    </button>
-                  </div>
-                </div>
-                {showEditT && (
-                  <div>
-                    <div style={{fontSize:11,color:'#7a7a6a',marginBottom:10}}>Enter targets from your plan. Days 4=1, 5=2, 6=3 are auto-mirrored.</div>
-                    {[[1,'🔵 Day 1 — Low (mirrors Day 4)'],[2,'🟡 Day 2 — Moderate (mirrors Day 5)'],[3,'🔴 Day 3 — High (mirrors Day 6)'],[7,'🔵 Day 7 — Low (unique)']].map(([d,label]) => (
-                      <div key={d} style={{marginBottom:12}}>
-                        <div style={{fontSize:11,fontWeight:700,color:'#555',marginBottom:5}}>{label}</div>
-                        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
-                          {[['Cals','cal'],['Protein','p'],['Fat','f'],['Carbs','c'],['Fiber','fb']].map(([lbl,k]) => (
-                            <div key={k}>
-                              <div style={{fontSize:10,color:'#9a9a8a',marginBottom:3}}>{lbl}</div>
-                              <input type="number" value={editForm[`d${d}_${k}`]||''} style={{...S.inp,padding:'6px 8px',fontSize:13,textAlign:'center'}}
-                                onChange={e => setEditForm(p => ({...p,[`d${d}_${k}`]:+e.target.value}))}/>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                    <button style={S.btn()}
-                      title="Save these macro targets for this month — replaces projected values permanently"
-                      onClick={async () => {
-                      const fallback = customT[mon-1] || MONTH_DATA[mon-1] || seededData || MONTH_DATA[9];
-                      const mk = (d) => ({
-                        cal:editForm[`d${d}_cal`]||fallback[d].cal, p:editForm[`d${d}_p`]||fallback[d].p,
-                        f:editForm[`d${d}_f`]||fallback[d].f,     c:editForm[`d${d}_c`]||fallback[d].c,
-                        fb:editForm[`d${d}_fb`]||fallback[d].fb,
-                        ct:[1,4,7].includes(d)?'low':[2,5].includes(d)?'moderate':'high',
-                      });
-                      await saveCustomT({...customT,[mon]:{1:mk(1),2:mk(2),3:mk(3),4:mk(1),5:mk(2),6:mk(3),7:mk(7)}});
-                      setShowEditT(false);
-                    }}>✓ Save Targets for Month {mon}</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Day tabs */}
-            <div style={{display:'flex',gap:5,marginBottom:14,overflowX:'auto',paddingBottom:3}}>
+            {/* Day tabs — wrap to two rows on mobile so all 7 are visible without scrolling */}
+            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:14}}>
               {[1,2,3,4,5,6,7].map(d => {
                 const r = mData[d];
                 const has = !!plans[mon]?.[d-1];
@@ -3291,6 +3243,89 @@ function HollNutrition() {
               </div>
             )}
           </div>
+
+            {/* Projected targets entry — M10–12 and beyond until real data entered */}
+            {(PROJECTED.has(mon) || mon > 12) && (
+              <div style={{...S.card,border:`1.5px solid ${customT[mon]?'#b8d4c8':'#fde68a'}`,background:customT[mon]?'#f0f7f0':'#fffbeb',marginBottom:14}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:showEditT?14:0}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:13,color:customT[mon]?'#1b3d2a':'#92400e'}}>
+                      {customT[mon]?`✓ Custom targets saved for Month ${mon}`:`◈ Month ${mon} — targets seeded from Month ${mon-1}`}
+                    </div>
+                    <div style={{fontSize:12,color:'#7a7a6a',marginTop:2}}>
+                      {(() => {
+                        if (customT[mon]) return 'Overrides seeded values.';
+                        if (mon <= 12) return 'Enter real targets when your nutritionist provides them.';
+                        if (!calcSeed) return `Using Month ${mon-1} macros as baseline. Log a weight in 📓 Progress to enable automatic calorie scaling.`;
+                        const gw = prefs.goalWeight ? +prefs.goalWeight : null;
+                        const cw = +latestNoteWeight;
+                        const gap = gw ? +(cw - gw).toFixed(1) : null;
+                        const adjLabel = gap === null ? 'full −250 cal deficit (set a goal weight in Preferences for smarter scaling)'
+                          : gap <= 0 ? `at or below goal weight — seeded at maintenance (${calcSeed.maintenance} cal/day)`
+                          : gap <= 5 ? `${gap} lbs from goal — half deficit seeded (−125 cal/day)`
+                          : `${gap} lbs from goal — full deficit seeded (−250 cal/day)`;
+                        return `Scaled to ${cw} lbs · ${adjLabel}. Adjust in edit form if needed.`;
+                      })()}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:8}}>
+                    {customT[mon] && (
+                      <button style={{...S.btn('red'),fontSize:12,padding:'6px 12px'}}
+                        title="Remove custom targets and revert to projected values for this month"
+                        onClick={async () => { const t={...customT}; delete t[mon]; await saveCustomT(t); setShowEditT(false); }}>
+                        Reset
+                      </button>
+                    )}
+                    <button style={{...S.btn(showEditT?'out':'sage'),fontSize:12,padding:'6px 14px'}}
+                      title={showEditT?'Discard changes':customT[mon]?'Edit the saved macro targets for this month':'Enter the real macro targets from your nutritionist for this month'}
+                      onClick={() => {
+                        if (!showEditT) {
+                          const src = customT[mon] || MONTH_DATA[mon] || seededData || customT[mon-1] || MONTH_DATA[mon-1] || MONTH_DATA[9];
+                          const f={};
+                          [1,2,3,7].forEach(d => { f[`d${d}_cal`]=src[d].cal; f[`d${d}_p`]=src[d].p; f[`d${d}_f`]=src[d].f; f[`d${d}_c`]=src[d].c; f[`d${d}_fb`]=src[d].fb; });
+                          setEditForm(f);
+                        }
+                        setShowEditT(!showEditT);
+                      }}>
+                      {showEditT?'Cancel':customT[mon]?'Edit':'+ Enter Real Targets'}
+                    </button>
+                  </div>
+                </div>
+                {showEditT && (
+                  <div>
+                    <div style={{fontSize:11,color:'#7a7a6a',marginBottom:10}}>Enter targets from your plan. Days 4=1, 5=2, 6=3 are auto-mirrored.</div>
+                    {[[1,'🔵 Day 1 — Low (mirrors Day 4)'],[2,'🟡 Day 2 — Moderate (mirrors Day 5)'],[3,'🔴 Day 3 — High (mirrors Day 6)'],[7,'🔵 Day 7 — Low (unique)']].map(([d,label]) => (
+                      <div key={d} style={{marginBottom:12}}>
+                        <div style={{fontSize:11,fontWeight:700,color:'#555',marginBottom:5}}>{label}</div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
+                          {[['Cals','cal'],['Protein','p'],['Fat','f'],['Carbs','c'],['Fiber','fb']].map(([lbl,k]) => (
+                            <div key={k}>
+                              <div style={{fontSize:10,color:'#9a9a8a',marginBottom:3}}>{lbl}</div>
+                              <input type="number" value={editForm[`d${d}_${k}`]||''} style={{...S.inp,padding:'6px 8px',fontSize:13,textAlign:'center'}}
+                                onChange={e => setEditForm(p => ({...p,[`d${d}_${k}`]:+e.target.value}))}/>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <button style={S.btn()}
+                      title="Save these macro targets for this month — replaces projected values permanently"
+                      onClick={async () => {
+                      const fallback = customT[mon-1] || MONTH_DATA[mon-1] || seededData || MONTH_DATA[9];
+                      const mk = (d) => ({
+                        cal:editForm[`d${d}_cal`]||fallback[d].cal, p:editForm[`d${d}_p`]||fallback[d].p,
+                        f:editForm[`d${d}_f`]||fallback[d].f,     c:editForm[`d${d}_c`]||fallback[d].c,
+                        fb:editForm[`d${d}_fb`]||fallback[d].fb,
+                        ct:[1,4,7].includes(d)?'low':[2,5].includes(d)?'moderate':'high',
+                      });
+                      await saveCustomT({...customT,[mon]:{1:mk(1),2:mk(2),3:mk(3),4:mk(1),5:mk(2),6:mk(3),7:mk(7)}});
+                      setShowEditT(false);
+                    }}>✓ Save Targets for Month {mon}</button>
+                  </div>
+                )}
+              </div>
+            )}
+
 
           {/* ── GROCERY (inline at bottom of Planner) ────────────────────── */}
           {tab==='planner' && (
@@ -3940,9 +3975,13 @@ function HollNutrition() {
 
           const appts = health.appointments || [];
           const saveAppt = (appt) => {
-            const existing = appts.findIndex(a => a.id === appt.id);
+            // Match by id when present, otherwise match by type (for default appointments
+            // that start with id:null — prevents duplicate entries on repeated saves).
+            const existing = appt.id
+              ? appts.findIndex(a => a.id === appt.id)
+              : appts.findIndex(a => a.type === appt.type);
             const updated = existing >= 0
-              ? appts.map((a,i) => i===existing ? appt : a)
+              ? appts.map((a,i) => i===existing ? {...appt, id: a.id || Date.now()} : a)
               : [...appts, {...appt, id: Date.now()}];
             saveHealth({...health, appointments: updated});
             setHealthApptForm({type:'',date:'',interval:12,notes:'',editing:null});
@@ -4573,7 +4612,10 @@ function HollNutrition() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div style={{padding:'18px',background:'#edf7f0',borderRadius:12,border:'1px solid #b6d9be'}}>
                   <div style={{fontWeight:700,fontSize:14,marginBottom:6,color:'#1b3d2a'}}>⬇ Export</div>
-                  <div style={{fontSize:12,color:'#5a8e6a',marginBottom:14,lineHeight:1.6}}>Download all plans, recipes, progress, health data, and settings as a complete backup file.</div>
+                  <div style={{fontSize:12,color:'#5a8e6a',marginBottom:8,lineHeight:1.6}}>Download all plans, recipes, progress, health data, and settings as a complete backup file.</div>
+                  <div style={{fontSize:11,color:'#7a7a6a',marginBottom:14,padding:'6px 10px',background:'#f4f0e9',borderRadius:7}}>
+                    📊 Current data: {Object.keys(plans).filter(k=>plans[k]).length} months of plans · {(health.appointments||[]).filter(a=>a.date).length} health visits logged · {notes.length} progress entries
+                  </div>
                   <button style={{...S.btn(),width:'100%'}}
                     title="Download a complete backup: all months of plans, recipe library, per-month recipe cards, grocery lists, progress log, health appointments, preferences, and display settings"
                     onClick={() => {
