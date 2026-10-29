@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 const APP_CHANGELOG = [
+  { version: '1.8.2', date: '2026-10-29', notes: 'Planner and PDF compact improvements. (1) Generated Day card redesigned to match the Target card style \u2014 same compact pill layout (label row + cal + delta vs target + P/F/C/Fib macros in small numerals), removes the large MacroGrid block so meal cards are closer to the top after selecting a day. (2) PDF Weekly Overview: each meal item now has 4 checkboxes [ ][ ][ ][ ] instead of 1, so a single printed page tracks all 4 weeks of the monthly plan cycle. Grocery list page is unchanged (1 checkbox per item). Help step 5 updated to describe 4-checkbox layout.' },
   { version: '1.8.1', date: '2026-10-29', notes: 'Health section data persistence fix. Root cause: saveAppt matched on appt.id to find existing entries, but default appointment types (Annual Physical, Blood Work, etc.) start with id:null. Every save on a default type returned findIndex=-1 and created a new duplicate entry rather than updating the existing one, so logged visit dates accumulated as unseen duplicates — the visible card always showed the first match from allTypes merge, which might be stale. Fix: saveAppt now matches by type when id is null, and preserves or assigns a real id on save so subsequent edits match correctly. Also: export panel now shows a live data count (months of plans, health visits logged, progress entries) so you can confirm health data is present before downloading.' },
   { version: '1.8.0', date: '2026-10-29', notes: 'Planner layout redesign and grocery pipeline fixes from M16 review. Layout: (1) Action buttons (Build from Library, Random Package, Reimport Week Plan, Reimport Recipes, Regenerate Day) collapsed into a single \u201c\u2699 Actions \u25be\u201d dropdown menu \u2014 reduces header clutter and puts meal cards immediately visible on open. (2) Day pills changed from horizontal scroll to flex-wrap so all 7 days are visible on mobile without scrolling. (3) Custom Targets card moved from above the day pills to just above the Grocery List section \u2014 only needed when first setting targets, not every session. (4) Month strip date range label removed \u2014 caused confusion when cycles ran long. Grocery: (5) CATEGORY_OVERRIDE additions: sesame ginger dressing, toasted sesame oil, store-bought vinaigrette, rice vinegar \u2192 Oils & Condiments; mixed berries \u2192 Frozen (always purchased frozen); veggie straws \u2192 Other. (6) normalizeIngName aliases: Carrots \u2192 Carrot, Zucchini sliced into half-moons \u2192 Zucchini, Raw celery \u2192 Celery, Green onion \u2192 Green onions. (7) Produce small\u2192medium unit alias in consolidateVolume so "1/2 small zucchini" entries merge correctly with other zucchini entries. Version bump to 1.8.0 marks a new fix pack for layout and grocery improvements.' },
   { version: '1.7.1', date: '2026-08-24', notes: 'Recipe button and no-card modal fixes. (1) Recipe button in meal plan now shows for ALL items unconditionally \u2014 previously gated on isDish(), which excluded packaged snacks like GoMacro bar, leaving no way to access the recipe modal after deleting a bad card. (2) No-card recipe modal state redesigned: now shows two side-by-side buttons \u2014 \u201c\ud83d\udcbb Get Recipe from Claude\u201d (existing flow) and \u201c\ud83d\udce6 Mark as Packaged Item\u201d (creates minimal _packaged card instantly without invoking Claude). This completes the packaged item workflow: delete bad card \u2192 Recipe button reappears \u2192 modal shows no-card state \u2192 click Mark as Packaged \u2192 done.' },
@@ -2038,20 +2039,20 @@ function HollNutrition() {
         var meal = (day.meals||[]).find(function(m){return m.slot===slot;});
         if (!meal) { row.push(''); return; }
         if (slot === 'Protein Supplement') {
-          row.push('[ ] Oat milk\nprotein shake');
+          row.push('[ ][ ][ ][ ] Oat milk\nprotein shake');
           return;
         }
         var items = (meal.items||[]);
 
         if (slot === 'Snacks') {
           // Snacks: always list all individual items
-          row.push(items.map(function(it){ return '[ ] '+(it.name||''); }).join('\n'));
+          row.push(items.map(function(it){ return '[ ][ ][ ][ ] '+(it.name||''); }).join('\n'));
           return;
         }
 
         // Priority 1: recipe name matched exactly to a meal item (named-dish plans)
         var recName = recipeNameForSlot[di+'_'+slot];
-        if (recName) { row.push('[ ] '+recName); return; }
+        if (recName) { row.push('[ ][ ][ ][ ] '+recName); return; }
 
         // Priority 2: first item that isDish() recognises as a dish name
         var dishItem = null;
@@ -2061,10 +2062,10 @@ function HollNutrition() {
         if (dishItem) {
           // Show the dish name; if other items remain, list up to 2 more below it
           var others = items.filter(function(it){ return it !== dishItem; });
-          var text = '[ ] '+(dishItem.name||'');
+          var text = '[ ][ ][ ][ ] '+(dishItem.name||'');
           var extra = others.slice(0, 2);
           var remaining = others.length - extra.length;
-          if (extra.length) text += '\n' + extra.map(function(it){ return '[ ] '+(it.name||''); }).join('\n');
+          if (extra.length) text += '\n' + extra.map(function(it){ return '[ ][ ][ ][ ] '+(it.name||''); }).join('\n');
           if (remaining > 0) text += '\n+ '+remaining+' more';
           row.push(text);
           return;
@@ -2074,7 +2075,7 @@ function HollNutrition() {
         var MAX = 3;
         var shown = items.slice(0, MAX);
         var rest = items.length - MAX;
-        var text = shown.map(function(it){ return '[ ] '+(it.name||''); }).join('\n');
+        var text = shown.map(function(it){ return '[ ][ ][ ][ ] '+(it.name||''); }).join('\n');
         if (rest > 0) text += '\n+ '+rest+' more';
         row.push(text);
       });
@@ -2545,7 +2546,7 @@ function HollNutrition() {
                 ['2','Set up Preferences first','Go to ⚙️ Preferences before generating any plans. Choose your Diet Mode (🌱 Vegetarian or 🍖 Omnivore) — this controls which proteins appear in plans and how items are flagged. Then enter your height, age, activity level, and goal. The tool calculates your calorie target automatically from your latest logged weight. Add foods to Always Include or Prefer Often, review your Avoid list, and set your preferred Theme and Layout.','#8b5cf6'],
                 ['3','Macro targets for new months','For M10–M12, click + Enter Real Targets in the ◈ banner when your nutritionist provides them. For M13 and beyond, macros are automatically seeded from the prior month as a baseline — adjust them in the Planner if your goal changes. Days 4/5/6 always auto-mirror Days 1/2/3.','#6366f1'],
                 ['4','Generate a new month plan','In the Planner, open the ⚙ Actions ▾ dropdown at the top right and choose ✦ Build from Library (preferred — draws from your existing recipe library) or 🎲 Random Package from Claude (Claude invents new dishes freely). Copy the prompt, paste into claude.ai, paste the JSON back, and click ✓ Import.','#10b981'],
-                ['5','Download your PDF','After importing, click ⬇ Download PDF in the Planner to generate the full package: Weekly Overview, Grocery List, Daily Breakouts, and Recipe pages. The Weekly Overview shows dish names as single checkboxes for easy tracking.','#f59e0b'],
+                ['5','Download your PDF','After importing, click ⬇ Download PDF in the Planner to generate the full package: Weekly Overview, Grocery List, Daily Breakouts, and Recipe pages. The Weekly Overview shows 4 checkboxes per item so one printed sheet tracks all 4 weeks of the monthly cycle.','#f59e0b'],
                 ['6','Review your grocery list','The Grocery List appears at the bottom of the Planner tab. Check items off as you shop. It also prints on Page 2 of the PDF. Note: whole fruits (banana, apple, etc.) are counted per occasion — each appearance in a recipe card counts as 1 to buy, regardless of whether the card says ½ or 1, because you can\u2019t save half a banana between days.','#ec4899'],
                 ['7','Import parts separately','Open ⚙ Actions ▾ in the Planner to access Reimport Week Plan, Reimport Recipes, and Regenerate Day N — these update just one section without changing the rest of your plan. The grocery list updates automatically whenever the plan or recipe cards change.','#f97316'],
                 ['8','Swap or edit a meal item','In the Planner, click ↔ Swap on any food item to open the swap panel. 📖 Food Swap Bible shows pre-defined substitutions. ✨ AI Suggestions generates macro-matched alternatives. Click ✏️ Edit to correct a name, calorie value, or macro — totals recalculate automatically.','#f97316'],
@@ -3108,14 +3109,23 @@ function HollNutrition() {
 
             {curDay ? (
               <>
-                <div style={{...S.card,background:`linear-gradient(140deg,${CYCLE[dRef.ct].bg},white 70%)`}}>
+                <div style={{...S.card,background:`linear-gradient(140deg,${CYCLE[dRef.ct].bg},white 60%)`,marginBottom:10,padding:'10px 14px'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
-                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:700}}>Generated · {curDay.totalCalories} cal</div>
-                    <div style={{fontWeight:700,fontSize:12,color:Math.abs(curDay.totalCalories-dRef.cal)<60?'#065f46':'#c97a06'}}>
-                      {curDay.totalCalories>dRef.cal?'+':''}{curDay.totalCalories-dRef.cal} vs target
+                    <div>
+                      <div style={{fontSize:10,color:'#9a9a8a',fontWeight:700,letterSpacing:'0.5px',marginBottom:3}}>GENERATED · DAY {day}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:Math.abs(curDay.totalCalories-dRef.cal)<60?'#065f46':'#c97a06'}}>
+                        {curDay.totalCalories} cal &nbsp;·&nbsp; {curDay.totalCalories>dRef.cal?'+':''}{curDay.totalCalories-dRef.cal} vs target
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                      {curDay.macros && [['P',curDay.macros.protein,'g','#3b82f6'],['F',curDay.macros.fat,'g','#f59e0b'],['C',curDay.macros.carbs,'g','#10b981'],['Fib',curDay.macros.fiber,'g','#8b5cf6']].map(([l,v,u,col]) => (
+                        <div key={l} style={{textAlign:'center'}}>
+                          <div style={{fontSize:14,fontWeight:800,lineHeight:1,color:col}}>{Math.round(v)}<span style={{fontSize:9,fontWeight:400,color:'#888'}}>{u}</span></div>
+                          <div style={{fontSize:9,color:'#9a9a8a'}}>{l}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  {curDay.macros && <MacroGrid macros={curDay.macros}/>}
                 </div>
 
                 {/* Disliked/auto-sub banner */}
