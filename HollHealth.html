@@ -201,8 +201,9 @@ const MONTH_DATA = {
   11:{1:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},2:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},3:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},4:{cal:2258,p:140,f:98, c:151,fb:46,ct:'low'},5:{cal:2238,p:125,f:101,c:161,fb:41,ct:'moderate'},6:{cal:2250,p:142,f:92, c:164,fb:45,ct:'high'},7:{cal:2252,p:120,f:104,c:157,fb:46,ct:'low'}},
   12:{1:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},2:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},3:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},4:{cal:2260,p:143,f:97, c:150,fb:47,ct:'low'},5:{cal:2240,p:128,f:100,c:160,fb:42,ct:'moderate'},6:{cal:2252,p:144,f:91, c:165,fb:46,ct:'high'},7:{cal:2255,p:122,f:103,c:156,fb:47,ct:'low'}},
 };
-const APP_VERSION = '1.8.2';
+const APP_VERSION = '1.8.3';
 const APP_CHANGELOG = [
+  { version: '1.8.3', date: '2026-10-29', notes: 'M17 grocery audit fixes and Target card redesign. (1) Target card redesigned to match Generated card: compact pill layout, colored P/F/C/Fib numerals, reduced padding, 4px margin to Generated card below it \u2014 both fit in a tight band so Breakfast is visible without scrolling. (2) normalizeIngName: leading state/prep adjective strip added for Cooked, Uncooked, Unsweetened, Sweetened, Natural, Organic, Shelled, Canned, Drained, Rinsed, Low-sodium, Plain, Dry, Roasted, Toasted, Frozen, Thawed \u2014 eliminates "Canned chickpeas" vs "Chickpeas", "Natural almond butter" vs "Almond butter", "Cooked brown rice" vs "Brown rice", "Shelled edamame" vs "Edamame", "Unsweetened oat milk" vs "Oat milk" split entries. (3) "Banana, frozen or fresh" and "Banana, fresh or frozen" variants now strip to "Banana". (4) CATEGORY_OVERRIDE: dried cranberries, raisins, dried mango \u2192 Pantry & Spices. (5) No-card fallback: item name added with qty=1 to Other category instead of dumping raw portion string (e.g. "1/2 apple + 1 tsp almond butter") as a malformed grocery entry.' },
   { version: '1.8.2', date: '2026-10-29', notes: 'Planner and PDF compact improvements. (1) Generated Day card redesigned to match the Target card style \u2014 same compact pill layout (label row + cal + delta vs target + P/F/C/Fib macros in small numerals), removes the large MacroGrid block so meal cards are closer to the top after selecting a day. (2) PDF Weekly Overview: each meal item now has 4 checkboxes [ ][ ][ ][ ] instead of 1, so a single printed page tracks all 4 weeks of the monthly plan cycle. Grocery list page is unchanged (1 checkbox per item). Help step 5 updated to describe 4-checkbox layout.' },
   { version: '1.8.1', date: '2026-10-29', notes: 'Health section data persistence fix. Root cause: saveAppt matched on appt.id to find existing entries, but default appointment types (Annual Physical, Blood Work, etc.) start with id:null. Every save on a default type returned findIndex=-1 and created a new duplicate entry rather than updating the existing one, so logged visit dates accumulated as unseen duplicates — the visible card always showed the first match from allTypes merge, which might be stale. Fix: saveAppt now matches by type when id is null, and preserves or assigns a real id on save so subsequent edits match correctly. Also: export panel now shows a live data count (months of plans, health visits logged, progress entries) so you can confirm health data is present before downloading.' },
   { version: '1.8.0', date: '2026-10-29', notes: 'Planner layout redesign and grocery pipeline fixes from M16 review. Layout: (1) Action buttons (Build from Library, Random Package, Reimport Week Plan, Reimport Recipes, Regenerate Day) collapsed into a single \u201c\u2699 Actions \u25be\u201d dropdown menu \u2014 reduces header clutter and puts meal cards immediately visible on open. (2) Day pills changed from horizontal scroll to flex-wrap so all 7 days are visible on mobile without scrolling. (3) Custom Targets card moved from above the day pills to just above the Grocery List section \u2014 only needed when first setting targets, not every session. (4) Month strip date range label removed \u2014 caused confusion when cycles ran long. Grocery: (5) CATEGORY_OVERRIDE additions: sesame ginger dressing, toasted sesame oil, store-bought vinaigrette, rice vinegar \u2192 Oils & Condiments; mixed berries \u2192 Frozen (always purchased frozen); veggie straws \u2192 Other. (6) normalizeIngName aliases: Carrots \u2192 Carrot, Zucchini sliced into half-moons \u2192 Zucchini, Raw celery \u2192 Celery, Green onion \u2192 Green onions. (7) Produce small\u2192medium unit alias in consolidateVolume so "1/2 small zucchini" entries merge correctly with other zucchini entries. Version bump to 1.8.0 marks a new fix pack for layout and grocery improvements.' },
@@ -788,8 +789,14 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
     // Normalise "Baby spinach" -> "Spinach" (same produce item)
     n = n.replace(/^Baby\s+spinach$/i, 'Spinach');
     // Normalise "Ginger, grated" / "Fresh ginger" -> "Ground ginger" for shopping
-    // (recipe cards use grated fresh ginger in tsp amounts; buy ground ginger)
     n = n.replace(/^Ginger$/i, 'Ground ginger');
+    // Strip leading state/prep adjectives that don't affect what you buy
+    // "Cooked brown rice" -> "Brown rice", "Uncooked quinoa" -> "Quinoa",
+    // "Unsweetened oat milk" -> "Oat milk", "Natural almond butter" -> "Almond butter"
+    n = n.replace(/^(?:Cooked|Uncooked|Unsweetened|Sweetened|Natural|Organic|Raw|Roasted|Toasted|Frozen|Thawed|Shelled|Canned|Drained|Rinsed|Low-sodium|Low sodium|Reduced.sodium|Plain|Dry)\s+/i, '').trim();
+    // "Banana, frozen or fresh" -> "Banana" (the 'or fresh' part confuses PREP_STRIP_RE)
+    n = n.replace(/,\s*frozen\s+or\s+fresh$/i, '').trim();
+    n = n.replace(/,\s*fresh\s+or\s+frozen$/i, '').trim();
     // Strip trailing orphan comma
     n = n.replace(/,\s*$/, '').trim();
     // Capitalise first letter (string-format card ingredients may be all-lowercase)
@@ -912,6 +919,10 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
       'rice vinegar':              'Oils & Condiments',
       // Mixed berries always purchased frozen
       'mixed berries':             'Frozen',
+      // Dried fruit — pantry staple not produce
+      'dried cranberries':         'Pantry & Spices',
+      'dried mango':               'Pantry & Spices',
+      'raisins':                   'Pantry & Spices',
       // Veggie straws — packaged snack, not a spice
       'veggie straws':             'Other',
       // Packaged snack bars — any name containing these route to Other
@@ -1017,8 +1028,11 @@ const buildGroceryFromPlan = (weekPlan, recipeLibrary) => {
           }
           // Card found and expanded: never add the dish name itself as a fallback entry.
         } else {
-          // No recipe card -- add item name + plan portion directly
-          addIngredient(name, item.portion || '');
+          // No recipe card — add item name as a single clean entry in Other.
+          // Do NOT use item.portion as the amount: portion strings like
+          // "1/2 apple + 1 tsp almond butter" are human-readable text, not
+          // structured ingredient amounts, and produce malformed grocery lines.
+          addIngredient(name, '1', 'Other');
         }
 
         _dbg.push({name, card: !!card});
@@ -3089,18 +3103,18 @@ function HollNutrition() {
               })}
             </div>
 
-            {/* Target card */}
-            <div style={{...S.card,background:`linear-gradient(140deg,${CYCLE[dRef.ct].bg},white 60%)`,marginBottom:10,padding:'12px 18px'}}>
+            {/* Target card — compact pill style matching Generated card */}
+            <div style={{...S.card,background:`linear-gradient(140deg,${CYCLE[dRef.ct].bg},white 60%)`,marginBottom:4,padding:'10px 14px'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
                 <div>
-                  <div style={{fontSize:10,color:'#9a9a8a',fontWeight:700,letterSpacing:'0.5px',marginBottom:4}}>MONTH {mon} · DAY {day} TARGET</div>
+                  <div style={{fontSize:10,color:'#9a9a8a',fontWeight:700,letterSpacing:'0.5px',marginBottom:3}}>MONTH {mon} · DAY {day} TARGET</div>
                   <Bdg ct={dRef.ct}/>
                 </div>
-                <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
-                  {[['🔥',dRef.cal,'cal'],['P',dRef.p,'g'],['F',dRef.f,'g'],['C',dRef.c,'g'],['Fib',dRef.fb,'g']].map(([l,v,u]) => (
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  {[['🔥',dRef.cal,'cal','#1a1a1a'],['P',dRef.p,'g','#3b82f6'],['F',dRef.f,'g','#f59e0b'],['C',dRef.c,'g','#10b981'],['Fib',dRef.fb,'g','#8b5cf6']].map(([l,v,u,col]) => (
                     <div key={l} style={{textAlign:'center'}}>
-                      <div style={{fontSize:17,fontWeight:800,lineHeight:1}}>{v}<span style={{fontSize:10,fontWeight:400,color:'#888'}}>{u}</span></div>
-                      <div style={{fontSize:10,color:'#9a9a8a'}}>{l}</div>
+                      <div style={{fontSize:14,fontWeight:800,lineHeight:1,color:col}}>{v}<span style={{fontSize:9,fontWeight:400,color:'#888'}}>{u}</span></div>
+                      <div style={{fontSize:9,color:'#9a9a8a'}}>{l}</div>
                     </div>
                   ))}
                 </div>
